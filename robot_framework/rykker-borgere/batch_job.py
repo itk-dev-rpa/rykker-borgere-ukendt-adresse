@@ -2,6 +2,7 @@ import os
 import requests
 import urllib
 import uuid
+import re
 
 from itk_dev_shared_components.kmd_nova import nova_cases, nova_documents
 from itk_dev_shared_components.kmd_nova.authentication import  NovaAccess
@@ -51,16 +52,26 @@ def get_cases(nova_access: NovaAccess):
             "calculateTotalNumberOfRows": True
         }
     }
-
-    url = urllib.parse.urljoin(nova_access.domain, "api/Case/GetList")
     params = {"api-version": "2.0-Case"}
-
     headers = {'Content-Type': 'application/json', 'Authorization': f"Bearer {nova_access.get_bearer_token()}"}
 
-    response = requests.put(url, params=params, headers=headers, json=payload, timeout=60)
-    response.raise_for_status()
-    print(response.json()["pagingInformation"]['totalNumberOfRows'])
-    return response.json()["cases"]
+    cases = []
+    more_cases = True
+    url = urllib.parse.urljoin(nova_access.domain, "api/Case/GetList")
+    start_row = 1
+    while more_cases:
+        paging = {
+                "startRow": start_row,
+                "numberOfRows": 500,
+                "calculateTotalNumberOfRows": True
+        }
+        payload["paging"] = paging
+        response = requests.put(url, params=params, headers=headers, json=payload, timeout=60)
+        response.raise_for_status()
+        more_cases = response.json()["pagingInformation"]['hasMoreRows']
+        cases.extend(response.json()["cases"])
+        start_row += 500
+    return cases
 
 
 if __name__ == "__main__":
@@ -71,4 +82,10 @@ if __name__ == "__main__":
     nova_ac = NovaAccess(nova_connection.username, nova_connection.password)
     cases = get_cases(nova_ac)
 
-
+    regex_match = re.compile(r"^Kat[\.\s]*[A-Z](?!\d)", re.IGNORECASE)
+    filtered_cases = []
+    for case in cases:
+        case_title = case['caseAttributes']['title']
+        if(regex_match.match(case_title)):
+            filtered_cases.append(case)
+    print("done")
