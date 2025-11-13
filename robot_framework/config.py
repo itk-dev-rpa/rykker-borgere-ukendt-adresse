@@ -31,6 +31,7 @@ CVR = "55133018"
 KEYVAULT_CREDENTIALS = "Keyvault"
 KEYVAULT_URI = "Keyvault URI"
 KEYVAULT_PATH = "NOT_ORDERED_YET" # TODO: Get this
+EVENT_LOG_CONN = "Event Log"
 
 CASEWORKER = Caseworker(
     name='Rpabruger Rpa75 - MÅ IKKE SLETTES RITM0283472',
