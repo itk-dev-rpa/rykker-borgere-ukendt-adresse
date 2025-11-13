@@ -4,7 +4,8 @@ import urllib
 import uuid
 import re
 
-from itk_dev_shared_components.kmd_nova import nova_cases, nova_documents
+from robot_framework.rykker_borgere import nova_functions
+from robot_framework import config
 from itk_dev_shared_components.kmd_nova.authentication import  NovaAccess
 from OpenOrchestrator.orchestrator_connection.connection import  OrchestratorConnection
 
@@ -82,10 +83,12 @@ if __name__ == "__main__":
     nova_ac = NovaAccess(nova_connection.username, nova_connection.password)
     cases = get_cases(nova_ac)
 
-    regex_match = re.compile(r"^Kat[\.\s]*[A-Z](?!\d)", re.IGNORECASE)
+    regex_match = re.compile(r"^Kat[.\s]*[A-Z](?!\d)", re.IGNORECASE)
     filtered_cases = []
     for case in cases:
         case_title = case['caseAttributes']['title']
-        if(regex_match.match(case_title)):
+        if regex_match.match(case_title):
             filtered_cases.append(case)
+    for case in filtered_cases:
+        nova_functions.update_case(case, nova_ac, config.CASEWORKER)
     print("done")
