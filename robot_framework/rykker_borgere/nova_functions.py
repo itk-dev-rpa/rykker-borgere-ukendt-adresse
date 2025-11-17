@@ -1,14 +1,17 @@
-from itk_dev_shared_components.kmd_nova.authentication import NovaAccess
-from itk_dev_shared_components.kmd_nova import nova_notes
-import requests
+"""Contains functions for interacting with Nova."""
 import urllib
 import uuid
 from typing import Literal, Any
 
+import requests
+
 from itk_dev_shared_components.kmd_nova.nova_objects import Caseworker
+from itk_dev_shared_components.kmd_nova.authentication import NovaAccess
+from itk_dev_shared_components.kmd_nova import nova_notes
 
 
 def get_cases(nova_access: NovaAccess):
+    """Get a list of cases from Nova."""
     payload = {
         "common": {
             "transactionId": str(uuid.uuid4())
@@ -74,6 +77,7 @@ def get_cases(nova_access: NovaAccess):
     return cases
 
 def get_notes(nova_access: NovaAccess, case_id: str):
+    """Get notes for a case."""
     start_row = 0
     row_batch = 500
     new_notes = nova_notes.get_notes(case_id, nova_access, start_row, row_batch)
@@ -82,9 +86,8 @@ def get_notes(nova_access: NovaAccess, case_id: str):
         start_row += row_batch
         new_notes = nova_notes.get_notes(case_id, nova_access, start_row, row_batch)
         all_notes.extend(new_notes)
+    return all_notes
 
-def upload_document(nova_access: NovaAccess, case_id, document_name, document_path):
-    """Put a document in the bucket of Nova."""
 
 def update_case(case_uuid: str, nova_access: NovaAccess,
                 new_state: Literal["Opstaaet", "Oplyst", "Afgjort", "Bestilt", "Udfoert", "Afsluttet"] | None = None,
@@ -125,12 +128,11 @@ def _build_caseworker_payload(caseworker: Caseworker) -> dict:
                 "fullName": caseworker.name
             }
         }
-    elif caseworker.type == 'group':
+    if caseworker.type == 'group':
         return {
             "losIdentity": {
                 "administrativeUnitId": caseworker.ident,
                 "fullName": caseworker.name
             }
         }
-    else:
-        raise ValueError(f"Unknown caseworker type: {caseworker.type}")
+    raise ValueError(f"Unknown caseworker type: {caseworker.type}")

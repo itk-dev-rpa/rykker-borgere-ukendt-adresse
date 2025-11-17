@@ -1,9 +1,17 @@
-from OpenOrchestrator.orchestrator_connection.connection import OrchestratorConnection
-from robot_framework import config
+"""Functions for communicating with the Service Platform."""
+import base64
+from pathlib import Path
+
 from hvac import Client
 from python_serviceplatformen.authentication import KombitAccess
+from python_serviceplatformen import digital_post
+from python_serviceplatformen.models import message
+from OpenOrchestrator.orchestrator_connection.connection import OrchestratorConnection
+
+from robot_framework import config
 
 def get_kombit_access(orchestrator_connection: OrchestratorConnection):
+    """Get Kombit access credentials."""
     # Access Keyvault
     vault_auth = orchestrator_connection.get_credential(config.KEYVAULT_CREDENTIALS)
     vault_uri = orchestrator_connection.get_constant(config.KEYVAULT_URI).value
@@ -23,3 +31,38 @@ def get_kombit_access(orchestrator_connection: OrchestratorConnection):
 
     # Prepare access to the service platform
     return KombitAccess(config.CVR, certificate_path)
+
+def send_digital_post(kombit_access: KombitAccess, file_path: str, recipient_cpr: str):
+    """Send digital post to recipient."""
+    if not digital_post.is_registered(recipient_cpr, "digitalpost", kombit_access):
+        return False
+
+    sender = message.Sender(
+        senderID="CVR", idType="CVR", label="Rykker", attentionData=None, contactPoint=None
+    )
+    recipient = message.Recipient(
+        recipientID=recipient_cpr, idType="CPR", label="Rykker", attentionData=None, contactPoint=None
+    )
+    file_path = Path(file_path)
+    with open(file_path, "rb") as file:
+        file_content = base64.b64encode(file.read()).decode("utf-8")
+        send_file = message.File(encodingFormat="UTF-8", filename=str(file_path.name), language="DA-dk", content=file_content)
+        msg = message.create_digital_post_with_main_document("Rykker for adresseændring", sender, recipient, (send_file,))
+        digital_post.send_message("Digital Post", msg, kombit_access)
+    return True
+
+def send_sms(kombit_access: KombitAccess, recipient_cpr: str):
+    """Send SMS to recipient."""
+    if not digital_post.is_registered(recipient_cpr, "nemsms", kombit_access):
+        return False
+    recipient = message.Recipient(
+        recipientID=recipient_cpr, idType="CPR", label="Rykker", attentionData=None, contactPoint=None
+    )
+    sender = message.Sender(
+        senderID="CVR", idType="CVR", label="Rykker", attentionData=None, contactPoint=None
+    )
+    with open("sms_text.txt", "r", encoding="utf-8") as file:
+        sms_text = file.read()
+    msg = message.create_nemsms("Rykker for adresseændring", sms_text, sender, recipient)
+    digital_post.send_message("NemSMS", msg, kombit_access)
+    return True
