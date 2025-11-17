@@ -5,9 +5,9 @@ from typing import Literal, Any
 
 import requests
 
-from itk_dev_shared_components.kmd_nova.nova_objects import Caseworker
+from itk_dev_shared_components.kmd_nova.nova_objects import Caseworker, Document
 from itk_dev_shared_components.kmd_nova.authentication import NovaAccess
-from itk_dev_shared_components.kmd_nova import nova_notes
+from itk_dev_shared_components.kmd_nova import nova_notes, nova_documents
 
 
 def get_cases(nova_access: NovaAccess):
@@ -88,6 +88,19 @@ def get_notes(nova_access: NovaAccess, case_id: str):
         all_notes.extend(new_notes)
     return all_notes
 
+def upload_document(nova_access: NovaAccess, case_id, document_name, document_path):
+    """Put a document in the bucket of Nova."""
+    with open(document_path, "rb") as document_file:
+        document_uuid = nova_documents.upload_document(document_file, document_name, nova_access)
+    new_document = Document(
+        uuid=document_uuid,
+        title=document_name,
+        sensitivity="IkkeFortrolige",
+        document_type="Udgående",
+        description="Rykker sendt til borger.",
+        approved=True
+    )
+    nova_documents.attach_document_to_case(case_id, new_document, nova_access)
 
 def update_case(case_uuid: str, nova_access: NovaAccess,
                 new_state: Literal["Opstaaet", "Oplyst", "Afgjort", "Bestilt", "Udfoert", "Afsluttet"] | None = None,
