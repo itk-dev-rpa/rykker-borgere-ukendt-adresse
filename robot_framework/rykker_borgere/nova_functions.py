@@ -1,52 +1,40 @@
-"""Contains functions for interacting with Nova."""
+"""Functions for interacting with Nova."""
 import urllib
 import uuid
 from typing import Literal, Any
 
 import requests
-
-from itk_dev_shared_components.kmd_nova.nova_objects import Caseworker, Document
 from itk_dev_shared_components.kmd_nova.authentication import NovaAccess
-from itk_dev_shared_components.kmd_nova import nova_notes, nova_documents
+from itk_dev_shared_components.kmd_nova import nova_notes
+from itk_dev_shared_components.kmd_nova.nova_objects import Caseworker
+
+from robot_framework import config
 
 
 def get_cases(nova_access: NovaAccess):
-    """Get a list of cases from Nova."""
+    """Get all cases from Nova."""
     payload = {
         "common": {
             "transactionId": str(uuid.uuid4())
         },
-        "caseAttributes": {
-            "title": "Kat A",
-        },
+        "caseworker": config.CASEWORKER,
         "states": {
             "states": [
                 {
                     "progressState": "Opstaaet"
                 },
-                {
-                    "progressState": "Oplyst"
-                },
-                {
-                    "progressState": "Afgjort"
-                },
-                {
-                    "progressState": "Bestilt"
-                },
-                {
-                    "progressState": "Udfoert"
-                }
             ]
         },
         "caseGetOutput": {
             "caseAttributes": {
                 "title": True,
+                "caseDate": True,
             },
             "state": {
                 "progressState": True,
-                "activeCode": True
+                "activeCode": True,
             },
-            "numberOfDocuments": True
+            "numberOfDocuments": True,
         },
         "paging": {
             "startRow": 1,
@@ -76,8 +64,9 @@ def get_cases(nova_access: NovaAccess):
         start_row += row_batch
     return cases
 
+
 def get_notes(nova_access: NovaAccess, case_id: str):
-    """Get notes for a case."""
+    """Get all notes from a case."""
     start_row = 0
     row_batch = 500
     new_notes = nova_notes.get_notes(case_id, nova_access, start_row, row_batch)
@@ -88,19 +77,44 @@ def get_notes(nova_access: NovaAccess, case_id: str):
         all_notes.extend(new_notes)
     return all_notes
 
-def upload_document(nova_access: NovaAccess, case_id, document_name, document_path):
+
+def upload_document(nova_access: NovaAccess, document_path: str, document_title: str, case_id: str):
+    """Upload a document to Nova and attach it to a case."""
+    document_id = _upload_document_file(nova_access, document_path)
+    _import_document_to_case(nova_access, case_id, document_id, document_title)
+
+
+def _upload_document_file(nova_access: NovaAccess, document_path: str):
     """Put a document in the bucket of Nova."""
-    with open(document_path, "rb") as document_file:
-        document_uuid = nova_documents.upload_document(document_file, document_name, nova_access)
-    new_document = Document(
-        uuid=document_uuid,
-        title=document_name,
-        sensitivity="IkkeFortrolige",
-        document_type="Udgående",
-        description="Rykker sendt til borger.",
-        approved=True
-    )
-    nova_documents.attach_document_to_case(case_id, new_document, nova_access)
+    with open(document_path, 'rb') as file:
+        transaction_id = str(uuid.uuid4())
+        document_id = str(uuid.uuid4())
+        url = urllib.parse.urljoin(nova_access.domain, f"api/Document/UploadFile/{transaction_id}/{document_id}")
+        params = {"api-version": "2.0-Case"}
+        headers = {'Content-Type': 'application/octet-stream', 'Authorization': f"Bearer {nova_access.get_bearer_token()}"}
+        response = requests.put(url, params=params, headers=headers, data=file, timeout=60)
+        response.raise_for_status()
+        return document_id
+
+
+def _import_document_to_case(nova_access: NovaAccess, case_id: str, document_id: str, document_title: str):
+    """Set a document to a case."""
+    payload = {
+        "common": {
+            "transactionId": str(uuid.uuid4()),
+            "uuid": document_id
+        },
+        "caseUuid": case_id,
+        "title": document_title,
+        "description": "Rykker sendt til borger omkring ukendt adresse."
+    }
+    url = urllib.parse.urljoin(nova_access.domain, "api/Document/Import/")
+    params = {"api-version": "2.0-Case"}
+    headers = {'Content-Type': 'application/octet-stream', 'Authorization': f"Bearer {nova_access.get_bearer_token()}"}
+    response = requests.post(url, params=params, headers=headers, json=payload, timeout=60)
+    response.raise_for_status()
+
+
 
 def update_case(case_uuid: str, nova_access: NovaAccess,
                 new_state: Literal["Opstaaet", "Oplyst", "Afgjort", "Bestilt", "Udfoert", "Afsluttet"] | None = None,
