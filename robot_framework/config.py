@@ -35,9 +35,9 @@ EVENT_LOG_CONN = "Event Log"
 NOTE_PREFIX = "Rykker Step "
 
 CASEWORKER = Caseworker(
-    name='Rpabruger Rpa75 - MÅ IKKE SLETTES RITM0283472',
-    ident='azrpa75',
-    uuid='2382680f-58cd-4f6d-90fd-23e4ce0180ae',
+    name='Rpabruger Rpa94 - MÅ IKKE SLETTES RITM0',
+    ident='AZRPA94',
+    uuid='a577c0a2-a131-43a5-b4e6-b4f5bb75028f',
     type='group'
 )
 

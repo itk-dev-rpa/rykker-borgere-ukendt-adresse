@@ -1,16 +1,19 @@
+"""Script for setting correct user for batch of NOVA cases. Used only once, saved for documentation."""
 import os
-import requests
 import urllib
 import uuid
 import re
 
-from robot_framework.rykker_borgere import nova_functions
-from robot_framework import config
+import requests
 from itk_dev_shared_components.kmd_nova.authentication import  NovaAccess
 from OpenOrchestrator.orchestrator_connection.connection import  OrchestratorConnection
 
+from robot_framework.rykker_borgere import nova_functions
+from robot_framework import config
+
 
 def get_cases(nova_access: NovaAccess):
+    """Get cases from Nova and return those matching the regex."""
     payload = {
         "common": {
             "transactionId": str(uuid.uuid4())
@@ -56,7 +59,7 @@ def get_cases(nova_access: NovaAccess):
     params = {"api-version": "2.0-Case"}
     headers = {'Content-Type': 'application/json', 'Authorization': f"Bearer {nova_access.get_bearer_token()}"}
 
-    cases = []
+    matching_cases = []
     more_cases = True
     url = urllib.parse.urljoin(nova_access.domain, "api/Case/GetList")
     start_row = 1
@@ -70,9 +73,9 @@ def get_cases(nova_access: NovaAccess):
         response = requests.put(url, params=params, headers=headers, json=payload, timeout=60)
         response.raise_for_status()
         more_cases = response.json()["pagingInformation"]['hasMoreRows']
-        cases.extend(response.json()["cases"])
+        matching_cases.extend(response.json()["cases"])
         start_row += 500
-    return cases
+    return matching_cases
 
 
 if __name__ == "__main__":
@@ -88,7 +91,9 @@ if __name__ == "__main__":
     for case in cases:
         case_title = case['caseAttributes']['title']
         if regex_match.match(case_title):
+            print(f"Appending case {case_title}")
             filtered_cases.append(case)
     for case in filtered_cases:
-        nova_functions.update_case(case, nova_ac, config.CASEWORKER)
+        nova_functions.update_case(case["common"]["uuid"], nova_ac, new_caseworker=config.CASEWORKER)
+        print(f"Updated case {case['caseAttributes']['title']}")
     print("done")

@@ -115,7 +115,6 @@ def _import_document_to_case(nova_access: NovaAccess, case_id: str, document_id:
     response.raise_for_status()
 
 
-
 def update_case(case_uuid: str, nova_access: NovaAccess,
                 new_state: Literal["Opstaaet", "Oplyst", "Afgjort", "Bestilt", "Udfoert", "Afsluttet"] | None = None,
                 new_caseworker: Caseworker | None = None,):
@@ -148,18 +147,9 @@ def update_case(case_uuid: str, nova_access: NovaAccess,
 
 def _build_caseworker_payload(caseworker: Caseworker) -> dict:
     """Helper function to build caseworker payload based on type."""
-    if caseworker.type == 'user':
-        return {
-            "kspIdentity": {
-                "racfId": caseworker.ident,
-                "fullName": caseworker.name
-            }
+    return {
+        "kspIdentity": {
+            "fullName": caseworker.name,
+            "racfId": caseworker.ident
         }
-    if caseworker.type == 'group':
-        return {
-            "losIdentity": {
-                "administrativeUnitId": caseworker.ident,
-                "fullName": caseworker.name
-            }
-        }
-    raise ValueError(f"Unknown caseworker type: {caseworker.type}")
+    }
