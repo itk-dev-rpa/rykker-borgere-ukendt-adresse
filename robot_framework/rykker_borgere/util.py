@@ -2,8 +2,11 @@
 from pathlib import Path
 from datetime import datetime
 import subprocess
+import json
+import hashlib
 
 from docxtpl import DocxTemplate
+from OpenOrchestrator.orchestrator_connection.connection import OrchestratorConnection
 
 from itk_dev_shared_components.kmd_nova.nova_objects import JournalNote
 from robot_framework import config
@@ -21,10 +24,12 @@ def fill_template(template_path: str, output_path: str, name: str, date: datetim
     doc.save(filename=output_path)
     return Path(output_path)
 
+
 def convert_docx_to_pdf(path_to_docx: Path, tmpdir: str):
     """Convert a docx file to a PDF file."""
     subprocess.run(args=[config.PATH_TO_LIBREOFFICE, "--headless", "--convert-to", "pdf", "--outdir", tmpdir, str(path_to_docx)], check=True)
     return Path(tmpdir) / f"{path_to_docx.stem}.pdf"
+
 
 def get_step(notes: list[JournalNote]) -> tuple[int, JournalNote]:
     """Get the next step number for a case."""
@@ -38,3 +43,66 @@ def get_step(notes: list[JournalNote]) -> tuple[int, JournalNote]:
             new_step = highest_step + 1
             newest_note = note
     return new_step, newest_note
+
+
+def encrypt_cpr(cpr: str, first_name: str) -> str:
+    """Encrypt CPR and first name using SHA256 hashing.
+
+    Args:
+        cpr: CPR number of the citizen.
+        first_name: First name of the citizen.
+
+    Returns:
+        Encrypted hash string to use as queue reference.
+    """
+    salted_data = f"{cpr}{first_name}"
+    hash_obj = hashlib.sha256(salted_data.encode())
+    return hash_obj.hexdigest()
+
+
+def get_queue_element(  # pylint: disable=too-many-positional-arguments
+        orchestrator_connection: OrchestratorConnection, queue_name: str, reference: str) -> dict | None:
+    """Get a queue element by reference.
+
+    Args:
+        orchestrator_connection: Connection to OpenOrchestrator.
+        queue_name: Name of the queue.
+        reference: Reference key to look up.
+
+    Returns:
+        Queue element data as dict if found, None otherwise.
+    """
+    queue_elements = orchestrator_connection.get_queue_elements(queue_name, limit=99999999)
+    for element in queue_elements:
+        if element.reference == reference:
+            return json.loads(element.data) if element.data else None
+    return None
+
+
+def update_queue_element(  # pylint: disable=too-many-positional-arguments
+        orchestrator_connection: OrchestratorConnection, queue_name: str, reference: str,
+        digital_post: bool, nemsms: bool, case_uuid: str):
+    """Update or create a queue element with registration status.
+
+    Args:
+        orchestrator_connection: Connection to OpenOrchestrator.
+        queue_name: Name of the queue.
+        reference: Reference key (encrypted CPR).
+        digital_post: Digital Post registration status.
+        nemsms: NemSMS registration status.
+        case_uuid: UUID of the Nova case.
+    """
+    # Delete existing element if it exists
+    queue_elements = orchestrator_connection.get_queue_elements(queue_name, limit=99999999)
+    for element in queue_elements:
+        if element.reference == reference:
+            orchestrator_connection.delete_queue_element(element.id)
+            break
+
+    # Create new element with updated data
+    data = {
+        "digital_post": digital_post,
+        "nemsms": nemsms,
+        "case_uuid": case_uuid
+    }
+    orchestrator_connection.create_queue_element(queue_name, reference=reference, data=json.dumps(data))

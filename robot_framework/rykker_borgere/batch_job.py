@@ -12,7 +12,8 @@ from robot_framework.rykker_borgere import nova_functions
 from robot_framework import config
 
 
-def get_cases(nova_access: NovaAccess):
+# pylint: disable=duplicate-code
+def get_cases(nova_access: NovaAccess, states: list[str] | None = None, start_date: str | None = None, end_date: str | None = None):
     """Get cases from Nova and return those matching the regex."""
     payload = {
         "common": {
@@ -20,25 +21,6 @@ def get_cases(nova_access: NovaAccess):
         },
         "caseAttributes": {
             "title": "Kat A",
-        },
-        "states": {
-            "states": [
-                {
-                    "progressState": "Opstaaet"
-                },
-                {
-                    "progressState": "Oplyst"
-                },
-                {
-                    "progressState": "Afgjort"
-                },
-                {
-                    "progressState": "Bestilt"
-                },
-                {
-                    "progressState": "Udfoert"
-                }
-            ]
         },
         "caseGetOutput": {
             "caseAttributes": {
@@ -56,6 +38,13 @@ def get_cases(nova_access: NovaAccess):
             "calculateTotalNumberOfRows": True
         }
     }
+    if states:
+        payload["states"] = {}
+        if start_date:
+            payload["states"]["startFromDate"] = start_date
+        if end_date:
+            payload["states"]["endFromDate"] = end_date
+        payload["states"]["states"] = [{"progressState": state} for state in states]
     params = {"api-version": "2.0-Case"}
     headers = {'Content-Type': 'application/json', 'Authorization': f"Bearer {nova_access.get_bearer_token()}"}
 
@@ -84,15 +73,10 @@ if __name__ == "__main__":
     oc = OrchestratorConnection("Rykke Batch Job", oc_connection, oc_encryption, "", "")
     nova_connection = oc.get_credential("Nova API")
     nova_ac = NovaAccess(nova_connection.username, nova_connection.password)
-    cases = get_cases(nova_ac)
+    cases = get_cases(nova_ac, ["Opstaaet", "Oplyst", "Afgjort", "Bestilt", "Udfoert"])
 
-    regex_match = re.compile(r"^Kat[.\s]*[A-Z](?!\d)", re.IGNORECASE)
-    filtered_cases = []
-    for case in cases:
-        case_title = case['caseAttributes']['title']
-        if regex_match.match(case_title):
-            print(f"Appending case {case_title}")
-            filtered_cases.append(case)
+    regex_match = re.compile(r"^Kat[.\s]*[A-Za-z](?!\d)", re.IGNORECASE)
+    filtered_cases = [case for case in cases if regex_match.match(case['caseAttributes']['title'])]
     for case in filtered_cases:
         nova_functions.update_case(case["common"]["uuid"], nova_ac, new_caseworker=config.CASEWORKER)
         print(f"Updated case {case['caseAttributes']['title']}")

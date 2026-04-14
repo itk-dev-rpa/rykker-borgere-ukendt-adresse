@@ -19,8 +19,8 @@ ERROR_EMAIL = "Error Email"
 # Queue specific configs
 # ----------------------
 
-# The name of the job queue (if any)
-QUEUE_NAME = None
+# The name of the job queue for tracking registration status
+QUEUE_NAME = "RykkerBorgereUkendtAdresse"
 
 # The limit on how many queue elements to process
 MAX_TASK_COUNT = 100
@@ -28,9 +28,15 @@ MAX_TASK_COUNT = 100
 # ----------------------
 CVR = "55133018"
 
+# KLE number for "Folkeregistrering i almindelighed"
+KLE_NUMBER = "23.05.00"
+
+# SQL query for finding citizens with unknown address
+SQL_QUERY = "SELECT * FROM [DWH].[Mart].[AdresseAktuel] WHERE Vejkode = 9901 AND Myndighed = 751"
+
 KEYVAULT_CREDENTIALS = "Keyvault"
 KEYVAULT_URI = "Keyvault URI"
-KEYVAULT_PATH = "NOT_ORDERED_YET" # TODO: Get this
+KEYVAULT_PATH = "Digital_Post_Ukendt_Adresse"
 EVENT_LOG_CONN = "Event Log"
 NOTE_PREFIX = "Rykker Step "
 
