@@ -97,7 +97,7 @@ def handle_citizen(citizen: dict, nova_access: NovaAccess, kombit_access: Kombit
 
     if not cases:
         orchestrator_connection.log_trace(f"No case found for {first_name} (CPR: {cpr[:6]}****)")
-        return (0, 0)
+        return 0, 0
 
     # Use the first case if multiple exist
     case = cases[0]
@@ -108,17 +108,24 @@ def handle_citizen(citizen: dict, nova_access: NovaAccess, kombit_access: Kombit
         digital_post_registered, nemsms_registered = service_platform_functions.check_registration_status(cpr, kombit_access)
     except HTTPError as e:
         orchestrator_connection.log_error(f"Failed to check registration status for {first_name}: {e.response.text}")
-        return (0, 0)
+        return 0, 0
 
     # Get previous registration status from queue
     encrypted_ref = util.encrypt_cpr(cpr, first_name)
     previous_status = util.get_queue_element(orchestrator_connection, config.QUEUE_NAME, encrypted_ref)
 
+    sending_rykker_soon = False
+    latest_step, last_reminder_date = nova_functions.get_latest_reminder_info(case_uuid, nova_access)
+
+    if last_reminder_date:
+        message_interval = 14 if latest_step == 0 else 30
+        sending_rykker_soon = message_interval - (datetime.now() - last_reminder_date) < 7
+
     sms_sent = 0
     reminder_sent = 0
 
     # Check if NemSMS status changed from not registered to registered
-    if previous_status and not previous_status.get("nemsms", False) and nemsms_registered:
+    if not sending_rykker_soon and previous_status and not previous_status.get("nemsms", False) and nemsms_registered:
         # Send SMS in both Danish and English
         service_platform_functions.send_sms(kombit_access, cpr, "da")
         service_platform_functions.send_sms(kombit_access, cpr, "en")
@@ -135,7 +142,7 @@ def handle_citizen(citizen: dict, nova_access: NovaAccess, kombit_access: Kombit
     if reminder_result:
         reminder_sent = reminder_result
 
-    return (sms_sent, reminder_sent)
+    return sms_sent, reminder_sent
 
 
 def handle_case(case: dict, nova_access: NovaAccess, kombit_access: KombitAccess, orchestrator_connection: OrchestratorConnection) -> int:
