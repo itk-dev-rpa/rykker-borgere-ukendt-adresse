@@ -118,8 +118,9 @@ def handle_citizen(citizen: dict, nova_access: NovaAccess, kombit_access: Kombit
     latest_step, last_reminder_date = nova_functions.get_latest_reminder_info(case_uuid, nova_access)
 
     if last_reminder_date:
+        note_date = datetime.fromisoformat(last_reminder_date)
         message_interval = 14 if latest_step == 0 else 30
-        sending_rykker_soon = message_interval - (datetime.now() - last_reminder_date) < 7
+        sending_rykker_soon = timedelta(days=message_interval) - (datetime.now() - note_date) < timedelta(days=7)
 
     sms_sent = 0
     reminder_sent = 0
