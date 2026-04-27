@@ -1,0 +1,20 @@
+ {
+  "_info": "Dry-run simulation state. Replace placeholder keys/values with real data as needed.",
+  "_hints": {
+    "encrypted_ref": "SHA256 hash of the concatenated CPR and first name, i.e. sha256(cpr + first_name)",
+    "date_format": "ISO 8601, e.g. 2026-03-31T09:00:00"
+  },
+  "queue": {
+    "<encrypted_ref: sha256(cpr+first_name)>": {
+      "digital_post": true,
+      "nemsms": false,
+      "case_uuid": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    }
+  },
+  "nova_reminders": {
+    "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee": {
+      "latest_step": 1,
+      "last_date": "2026-03-31T09:00:00"
+    }
+  }
+}

@@ -1,21 +1,29 @@
 """This module contains the main process of the robot."""
 import os
 from datetime import datetime, timedelta
+from pathlib import Path
+import json
 import pyodbc
+from dotenv import load_dotenv
 from requests.exceptions import HTTPError
 
 from OpenOrchestrator.orchestrator_connection.connection import OrchestratorConnection
 from python_serviceplatformen.authentication import KombitAccess
 from itk_dev_shared_components.kmd_nova.authentication import NovaAccess
-from itk_dev_shared_components.kmd_nova import nova_cases
 import itk_dev_event_log
 
 from robot_framework.rykker_borgere import nova_functions, service_platform_functions, util
 from robot_framework import config
+from robot_framework.dry_run_helpers import DryRunTracker
 
 
-def process(orchestrator_connection: OrchestratorConnection) -> None:
+def process(orchestrator_connection: OrchestratorConnection, dry_run: bool = False) -> None:
     """Do the primary process of the robot."""
+    if dry_run:
+        tracker = activate_dryrun(orchestrator_connection)
+    else:
+        tracker = None
+
     orchestrator_connection.log_trace("Running process.")
     itk_dev_event_log.setup_logging(orchestrator_connection.get_constant(config.EVENT_LOG_CONN).value)
 
@@ -36,7 +44,7 @@ def process(orchestrator_connection: OrchestratorConnection) -> None:
     # Process each citizen
     for citizen in citizens_with_unknown_address:
         try:
-            result = handle_citizen(citizen, nova_access, kombit_access, orchestrator_connection)
+            result = handle_citizen(citizen=citizen, nova_access=nova_access, kombit_access=kombit_access, orchestrator_connection=orchestrator_connection, dry_run=dry_run, tracker=tracker)
             if result:
                 sms_sent, reminder_sent = result
                 sms_sent_count += sms_sent
@@ -45,10 +53,45 @@ def process(orchestrator_connection: OrchestratorConnection) -> None:
             orchestrator_connection.log_error(f"Error handling citizen {citizen['Fornavn']}: {str(e)}")
             continue
 
-    # Log final statistics
-    itk_dev_event_log.emit(orchestrator_connection.process_name, "SMS sent", sms_sent_count)
-    itk_dev_event_log.emit(orchestrator_connection.process_name, "Reminders sent", reminders_sent_count)
-    orchestrator_connection.log_info(f"Process completed. SMS sent: {sms_sent_count}, Reminders sent: {reminders_sent_count}")
+    # Print dry-run report or log final statistics
+    if dry_run:
+        tracker.print_report(orchestrator_connection)
+    else:
+        itk_dev_event_log.emit(orchestrator_connection.process_name, "SMS sent", sms_sent_count)
+        itk_dev_event_log.emit(orchestrator_connection.process_name, "Reminders sent", reminders_sent_count)
+        orchestrator_connection.log_info(f"Process completed. SMS sent: {sms_sent_count}, Reminders sent: {reminders_sent_count}")
+
+
+def activate_dryrun(orchestrator_connection: OrchestratorConnection) -> DryRunTracker:
+    """Activates dryrun my loading configuration and returning a tracker."""
+    orchestrator_connection.log_info("🔍 DRY-RUN MODE AKTIVERET - Ingen ændringer vil blive foretaget")
+
+    # Indlæs .env hvis den findes, og tillad lokal styring via miljøvariabel
+    try:
+        load_dotenv()  # no-op hvis .env ikke findes
+    except Exception:  # pylint: disable=broad-exception-caught
+        pass
+
+    mock_state = None
+    try:
+        # Prioritet: miljøvariabel → config → ingen
+        env_path = os.getenv("DRY_RUN_STATE_FILE")
+        state_path = env_path or getattr(config, "DRY_RUN_STATE_FILE", None)
+
+        if state_path:
+            p = Path(state_path)
+            if not p.is_absolute():
+                # Fortolk relative stier i forhold til robot_framework-mappen
+                base_dir = Path(__file__).parent
+                p = base_dir / p
+            if p.exists():
+                with open(p, "r", encoding="utf-8") as f:
+                    mock_state = json.load(f)
+            else:
+                orchestrator_connection.log_trace(f"Ingen dry-run state-fil fundet på: {p}")
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        orchestrator_connection.log_error(f"Kunne ikke indlæse dry-run state-fil: {e}")
+    return DryRunTracker(mock_state)
 
 
 def get_citizens_from_sql(db_connection: str, _orchestrator_connection: OrchestratorConnection) -> list[dict]:
@@ -75,9 +118,10 @@ def get_citizens_from_sql(db_connection: str, _orchestrator_connection: Orchestr
     connection.close()
     return citizens
 
-
-def handle_citizen(citizen: dict, nova_access: NovaAccess, kombit_access: KombitAccess,
-                   orchestrator_connection: OrchestratorConnection) -> tuple[int, int]:
+# pylint: disable=too-many-branches, too-many-statements
+def handle_citizen(*, citizen: dict, nova_access: NovaAccess, kombit_access: KombitAccess,
+                   orchestrator_connection: OrchestratorConnection, dry_run: bool = False,
+                   tracker: DryRunTracker = None) -> tuple[int, int]:
     """Handle a single citizen with unknown address.
 
     Args:
@@ -85,10 +129,13 @@ def handle_citizen(citizen: dict, nova_access: NovaAccess, kombit_access: Kombit
         nova_access: Nova API access.
         kombit_access: Kombit/Service Platform access.
         orchestrator_connection: Connection to OpenOrchestrator.
+        dry_run: If True, only log what would happen without making changes.
+        tracker: DryRunTracker instance for collecting dry-run statistics.
 
     Returns:
         Tuple of (sms_sent_count, reminder_sent_count).
     """
+
     cpr = citizen["CPR"]
     first_name = citizen["Fornavn"]
 
@@ -114,13 +161,45 @@ def handle_citizen(citizen: dict, nova_access: NovaAccess, kombit_access: Kombit
     encrypted_ref = util.encrypt_cpr(cpr, first_name)
     previous_status = util.get_queue_element(orchestrator_connection, config.QUEUE_NAME, encrypted_ref)
 
-    sending_rykker_soon = False
-    latest_step, last_reminder_date = nova_functions.get_latest_reminder_info(case_uuid, nova_access)
+    # In dry-run we may overlay a simulated previous queue state from tracker
+    if dry_run and tracker and hasattr(tracker, "mock_queue_state"):
+        simulated_prev = tracker.mock_queue_state.get(encrypted_ref)
+        if simulated_prev is not None:
+            previous_status = simulated_prev
 
-    if last_reminder_date:
-        note_date = datetime.fromisoformat(last_reminder_date)
-        message_interval = 14 if latest_step == 0 else 30
-        sending_rykker_soon = timedelta(days=message_interval) - (datetime.now() - note_date) < timedelta(days=7)
+    # Compute baseline and interval for next reminder based on steps already sent
+    step_sent, baseline_date, interval_days = nova_functions.get_next_reminder_baseline(case, nova_access)
+
+    # In dry-run overlay reminder state if provided
+    if dry_run and tracker and hasattr(tracker, "mock_nova_reminders"):
+        mock = tracker.mock_nova_reminders.get(case_uuid)
+        if mock:
+            step_sent = mock.get("latest_step", step_sent)
+            baseline_date = mock.get("last_date", baseline_date)
+            # interval still derived from step count
+            interval_days = 14 if step_sent == 0 else 30
+
+    # If no reminder notes exist at all (step_sent == 0 and no baseline date), establish step 0 now (non-dry-run)
+    if step_sent == 0 and not baseline_date:
+        baseline_date = datetime.now().isoformat()
+        if not dry_run:
+            try:
+                nova_functions.add_reminder_note(case_uuid, 0, nova_access)
+                interval_days = 14
+                orchestrator_connection.log_info(f"Etablerede baseline i Nova: 'Rykker 0 sendt' for sag {case['caseAttributes']['userFriendlyCaseNumber']}. Første rykker tidligst om 14 dage.")
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                orchestrator_connection.log_error(f"Kunne ikke oprette 'Rykker 0 sendt' baseline-note: {str(e)}")
+        else:
+            # In dry-run, do not write to Nova; just track that we would establish baseline now
+            if tracker:
+                tracker.log_nova_note(case_uuid, "Rykker note", "Rykker 0 (baseline)")
+            # Simulate baseline creation in dry-run so downstream logic can test reminder timing
+            interval_days = 14
+
+    # Determine if a reminder will be sent within 7 days (used to suppress SMS around reminder time)
+    baseline_dt = datetime.fromisoformat(baseline_date)
+    time_until_next = timedelta(days=interval_days) - (datetime.now() - baseline_dt)
+    sending_rykker_soon = time_until_next <= timedelta(days=7)
 
     sms_sent = 0
     reminder_sent = 0
@@ -128,25 +207,37 @@ def handle_citizen(citizen: dict, nova_access: NovaAccess, kombit_access: Kombit
     # Check if NemSMS status changed from not registered to registered
     if not sending_rykker_soon and previous_status and not previous_status.get("nemsms", False) and nemsms_registered:
         # Send SMS in both Danish and English
-        service_platform_functions.send_sms(kombit_access, cpr, "da")
-        service_platform_functions.send_sms(kombit_access, cpr, "en")
-        nova_functions.add_sms_note(case_uuid, nova_access, reason="NemSMS-status ændret fra ikke-tilmeldt til tilmeldt")
+        if not dry_run:
+            service_platform_functions.send_sms(kombit_access, cpr, "da")
+            service_platform_functions.send_sms(kombit_access, cpr, "en")
+            nova_functions.add_sms_note(case_uuid, nova_access, "NemSMS-status ændret fra ikke-tilmeldt til tilmeldt", config.CASEWORKER)
+        else:
+            if tracker:
+                tracker.log_sms(cpr, first_name, "da", "NemSMS-status ændret fra ikke-tilmeldt til tilmeldt")
+                tracker.log_sms(cpr, first_name, "en", "NemSMS-status ændret fra ikke-tilmeldt til tilmeldt")
+                tracker.log_nova_note(case_uuid, "SMS note", "NemSMS-status ændret fra ikke-tilmeldt til tilmeldt")
         sms_sent = 2
-        orchestrator_connection.log_info(f"SMS sent to {first_name} due to NemSMS status change.")
+        if dry_run:
+            orchestrator_connection.log_info(f"(dry-run) Ville sende SMS (da+en) til {first_name} pga. NemSMS statusændring.")
+        else:
+            orchestrator_connection.log_info(f"SMS sent to {first_name} due to NemSMS status change.")
 
     # Update queue with current status
-    util.update_queue_element(orchestrator_connection, config.QUEUE_NAME, encrypted_ref,
-                              digital_post_registered, nemsms_registered, case_uuid)
+    util.update_queue_element(orchestrator_connection, config.QUEUE_NAME, encrypted_ref, digital_post_registered, nemsms_registered, case_uuid)
+    if dry_run and tracker:
+        tracker.log_queue_update(encrypted_ref, digital_post_registered, nemsms_registered, case_uuid)
 
     # Handle reminder sending logic
-    reminder_result = handle_case(case, nova_access, kombit_access, orchestrator_connection)
+    reminder_result = handle_case(case, nova_access, kombit_access, orchestrator_connection, dry_run, tracker, step_sent, baseline_date)
     if reminder_result:
         reminder_sent = reminder_result
 
     return sms_sent, reminder_sent
 
-
-def handle_case(case: dict, nova_access: NovaAccess, kombit_access: KombitAccess, orchestrator_connection: OrchestratorConnection) -> int:
+# pylint: disable=too-many-positional-arguments
+def handle_case(case: dict, nova_access: NovaAccess, kombit_access: KombitAccess,
+                orchestrator_connection: OrchestratorConnection, dry_run: bool = False,
+                tracker: DryRunTracker = None, step_sent: int = 0, baseline_date: str | None = None) -> int:
     """Handle reminder sending for a single case.
 
     Args:
@@ -154,70 +245,65 @@ def handle_case(case: dict, nova_access: NovaAccess, kombit_access: KombitAccess
         nova_access: Nova API access.
         kombit_access: Kombit/Service Platform access.
         orchestrator_connection: Connection to OpenOrchestrator.
+        dry_run: If True, only log what would happen without making changes.
+        tracker: DryRunTracker instance for collecting dry-run statistics.
 
     Returns:
         Number of reminders sent (0 or 1).
     """
+
     case_uuid = case["common"]["uuid"]
     case_number = case["caseAttributes"]["userFriendlyCaseNumber"]
 
-    # Extract case party
-    case_parties = nova_cases._extract_case_parties(case)  # pylint: disable=protected-access
-    if len(case_parties) != 1:
-        orchestrator_connection.log_error(f"Case {case_number} has {len(case_parties)} parties, expected 1.")
-        return 0
-
-    case_party = case_parties[0]
-    if case_party.identification_type != "CprNummer":
-        orchestrator_connection.log_error(f"Case {case_number} has invalid party type {case_party.identification_type}.")
+    # Extract single CPR case party via helper
+    case_party = nova_functions.get_single_cpr_case_party(case)
+    if not case_party:
+        orchestrator_connection.log_error(f"Case {case_number} has invalid or unexpected parties (expecting exactly 1 CPR party).")
         return 0
 
     cpr = case_party.identification
 
-    # Get latest reminder info from Nova notes
-    latest_step, last_reminder_date = nova_functions.get_latest_reminder_info(case_uuid, nova_access)
+    # Use provided step/baseline to decide if we can send the next reminder
+    next_step = step_sent + 1
+    interval_days = 14 if step_sent == 0 else 30
 
-    # Calculate next step
-    next_step = latest_step + 1
+    baseline_dt = datetime.fromisoformat(baseline_date)
+    if datetime.now() - baseline_dt < timedelta(days=interval_days):
+        return 0  # Not enough time has passed
 
-    # Check if enough time has passed since last reminder
-    if last_reminder_date:
-        note_date = datetime.fromisoformat(last_reminder_date)
-        message_interval = 14 if latest_step == 0 else 30  # 14 days for first reminder, 30 for subsequent
-        if datetime.now() - note_date < timedelta(days=message_interval):
-            return 0  # Not enough time has passed
+    # Time window satisfied → send reminder letter for next_step
+    template_to_use = f"rykker_borgere/templates/Rykker {next_step} - Ukendt adresse.docx"
+    letter_name = f"Rykker {next_step} - Adresse.docx"
+    deadline_date = datetime.now() + timedelta(days=30)
 
-    # Send reminder letter if this is not the first contact (step > 0)
-    if next_step > 0:
-        template_to_use = f"rykker_borgere/templates/Rykker {next_step} - Ukendt adresse.docx"
-        letter_name = f"Rykker {next_step} - Adresse.docx"
-        deadline_date = datetime.now() + timedelta(days=30)
-
-        try:
+    try:
+        # Only create documents if not dry run
+        if not dry_run:
             letter_path = util.fill_template(template_to_use, f"tmp/{letter_name}", case_party.name, deadline_date, case_number)
             pdf_path = util.convert_docx_to_pdf(letter_path, "tmp/")
-
             # Upload to Nova and send via Digital Post
             nova_functions.upload_document(nova_access, str(pdf_path), letter_name, case_uuid)
             service_platform_functions.send_digital_post(kombit_access, str(pdf_path), cpr)
-
-            # Add journal note for reminder
             nova_functions.add_reminder_note(case_uuid, next_step, nova_access)
 
+        # Track reminder in dry-run tracker
+        if dry_run and tracker:
+            tracker.log_reminder(cpr, case_party.name, case_number, next_step)
+            tracker.log_nova_note(case_uuid, "Rykker note", f"Rykker {next_step}")
+
+        if not dry_run:
             itk_dev_event_log.emit(orchestrator_connection.process_name, f"Rykker {next_step} sendt")
             orchestrator_connection.log_info(f"Sent reminder {next_step} for case {case_number}")
 
-            return 1
+        return 1
 
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            orchestrator_connection.log_error(f"Failed to send reminder for case {case_number}: {str(e)}")
-            return 0
-
-    return 0
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        orchestrator_connection.log_error(f"Failed to send reminder for case {case_number}: {str(e)}")
+        return 0
 
 
 if __name__ == "__main__":
     conn_string = os.getenv("OpenOrchestratorConnString")
     crypto_key = os.getenv("OpenOrchestratorKey")
     oc = OrchestratorConnection("Udtræk Tilmelding Digital Post", conn_string, crypto_key, "", "")
-    process(oc)
+    process(oc, dry_run=True)

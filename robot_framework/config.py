@@ -40,6 +40,14 @@ KEYVAULT_PATH = "Digital_Post_Ukendt_Adresse"
 EVENT_LOG_CONN = "Event Log"
 NOTE_PREFIX = "Rykker Step "
 
+# Optional path to a JSON file used in dry-run to simulate previous state
+# Structure example:
+# {
+#   "queue": {"<encrypted_ref>": {"digital_post": true, "nemsms": false, "case_uuid": "..."}},
+#   "nova_reminders": {"<case_uuid>": {"latest_step": 1, "last_date": "2026-03-31T09:00:00"}}
+# }
+DRY_RUN_STATE_FILE: str | None = None
+
 CASEWORKER = Caseworker(
     name='Rpabruger Rpa94 - MÅ IKKE SLETTES RITM0',
     ident='AZRPA94',

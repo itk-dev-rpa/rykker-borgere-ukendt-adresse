@@ -6,7 +6,7 @@ from typing import Literal, Any
 import requests
 from itk_dev_shared_components.kmd_nova.authentication import NovaAccess
 from itk_dev_shared_components.kmd_nova import nova_notes, nova_cases, nova_documents
-from itk_dev_shared_components.kmd_nova.nova_objects import Caseworker, Document
+from itk_dev_shared_components.kmd_nova.nova_objects import Caseworker, Document, CaseParty
 
 from robot_framework import config
 
@@ -172,10 +172,12 @@ def get_cases_by_kle_and_cpr(nova_access: NovaAccess, kle_number: str, cpr: str)
         "caseParty": {
             "identificationType": "CprNummer",
             "identification": cpr,
-            "participantRole": "Primaer"
+            "participantRole": "Primær"
         },
-        "kle": {
-            "number": kle_number
+        "caseClassification": {
+            "kleNumber": {
+                "code": kle_number
+            }
         },
         "states": {
             "states": [
@@ -210,7 +212,7 @@ def get_cases_by_kle_and_cpr(nova_access: NovaAccess, kle_number: str, cpr: str)
             "startRow": 1,
             "numberOfRows": 100,
             "calculateTotalNumberOfRows": True
-        },
+        }
     }
     params = {"api-version": "2.0-Case"}
     headers = {'Content-Type': 'application/json', 'Authorization': f"Bearer {nova_access.get_bearer_token()}"}
@@ -261,7 +263,7 @@ def add_sms_note(case_uuid: str, nova_access: NovaAccess, reason: str = None, ca
     note_title = "SMS sendt"
     note_text = "SMS er blevet sendt til borgeren vedrørende ukendt adresse."
     if reason:
-        note_text += f"\n\nAarsag: {reason}"
+        note_text += f"\n\nÅrsag: {reason}"
 
     return nova_notes.add_text_note(case_uuid, note_title, note_text, caseworker, approved=False, nova_access=nova_access)
 
@@ -303,6 +305,56 @@ def get_latest_reminder_info(case_uuid: str, nova_access: NovaAccess) -> tuple[i
                 continue
 
     return (latest_step, latest_date)
+
+
+def get_single_cpr_case_party(case: dict) -> CaseParty | None:
+    """Return the single case party if exactly one exists and it's a CPR party; otherwise None."""
+    parties = nova_cases._extract_case_parties(case)  # pylint: disable=protected-access
+    if len(parties) != 1:
+        return None
+    party = parties[0]
+    if getattr(party, "identification_type", None) != "CprNummer":
+        return None
+    return party
+
+
+def get_latest_sms_info(case_uuid: str, nova_access: NovaAccess) -> str | None:
+    """Return the ISO date of the latest "SMS sendt" note, or None if none found."""
+    notes = get_notes(nova_access, case_uuid, expected_notes=0)
+    latest_date = None
+    for note in notes:
+        if note.title and note.title.strip() == "SMS sendt":
+            # Keep the latest by journal_date ordering (notes are typically returned newest first, but be safe)
+            if latest_date is None or (note.journal_date and note.journal_date > latest_date):
+                latest_date = note.journal_date
+    return latest_date
+
+
+def get_next_reminder_baseline(case: dict, nova_access: NovaAccess) -> tuple[int, str | None, int]:
+    """Compute next reminder baseline and interval based solely on reminder notes.
+
+    Returns a tuple of (step_sent, baseline_iso_date, interval_days) where:
+    - step_sent: how many reminder letters have already been sent (>= 0). Parsed from notes titled
+      "Rykker X sendt" where X is an integer (0, 1, 2, ...).
+    - baseline_iso_date: ISO date string to measure waiting time from for the NEXT step
+        * If step_sent == 0: baseline is the journal date of the latest "Rykker 0 sendt" note if it exists,
+          otherwise None (meaning baseline has not yet been established).
+        * If step_sent >= 1: baseline is the journal date of the latest reminder note (highest X).
+    - interval_days: 14 when step_sent == 0 (waiting to send step 1); otherwise 30 for subsequent steps.
+    """
+    case_uuid = case["common"]["uuid"]
+    step_sent, last_reminder_date = get_latest_reminder_info(case_uuid, nova_access)
+
+    if step_sent == 0:
+        # When no reminder notes exist at all, last_reminder_date will be None. In that case the caller should
+        # create a step 0 note (in non-dry-run) to establish the baseline, and wait 14 days from that date.
+        interval_days = 14
+        baseline = last_reminder_date  # date of step 0 if it exists; else None
+        return step_sent, baseline, interval_days
+
+    # For step_sent >= 1, use the date of the last reminder note as baseline and wait 30 days
+    interval_days = 30
+    return step_sent, last_reminder_date, interval_days
 
 
 def _build_caseworker_payload(caseworker: Caseworker) -> dict:

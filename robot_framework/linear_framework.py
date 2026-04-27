@@ -26,7 +26,7 @@ def main():
     for _ in range(config.MAX_RETRY_COUNT):
         try:
             reset.reset(orchestrator_connection)
-            process.process(orchestrator_connection)
+            process.process(orchestrator_connection, dry_run=False)
             break
 
         # If any business rules are broken the robot should stop entirely.
