@@ -100,7 +100,7 @@ def get_notes(nova_access: NovaAccess, case_id: str, expected_notes: int = 0):
 def upload_document(nova_access: NovaAccess, document_path: str, document_title: str, case_id: str):
     """Upload a document to Nova and attach it to a case."""
     with open(document_path, 'rb') as file:
-        document_id = nova_documents.upload_document(file,document_title, nova_access)
+        document_id = nova_documents.upload_document(file, document_title, nova_access)
         nova_doc = Document(uuid=document_id, title=document_title, sensitivity="Følsomme", document_type="Udgående", description="Rykker sendt til borger omkring ukendt adresse.", approved=False)
         nova_documents.attach_document_to_case(case_id, nova_doc, nova_access)
 

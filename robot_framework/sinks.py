@@ -122,7 +122,6 @@ class RealActionsSink:
         return self._current_case_or_raise()["common"]["uuid"]
 
 
-
 class DryRunSink:
     """Tracks actions that would be performed in a dry run.
 

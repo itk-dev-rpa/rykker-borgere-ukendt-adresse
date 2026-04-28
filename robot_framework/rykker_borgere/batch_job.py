@@ -5,8 +5,8 @@ import uuid
 import re
 
 import requests
-from itk_dev_shared_components.kmd_nova.authentication import  NovaAccess
-from OpenOrchestrator.orchestrator_connection.connection import  OrchestratorConnection
+from itk_dev_shared_components.kmd_nova.authentication import NovaAccess
+from OpenOrchestrator.orchestrator_connection.connection import OrchestratorConnection
 
 from robot_framework.rykker_borgere import nova_functions
 from robot_framework import config

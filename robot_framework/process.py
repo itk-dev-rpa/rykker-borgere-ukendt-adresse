@@ -142,6 +142,8 @@ def get_citizens_from_sql(db_connection: str, _orchestrator_connection: Orchestr
     return citizens
 
 # pylint: disable=too-many-branches, too-many-statements
+
+
 def handle_citizen(*, citizen: dict, nova_access: NovaAccess, kombit_access: KombitAccess,
                    orchestrator_connection: OrchestratorConnection, action_sink: DryRunSink | None = None,
                    _dry_run: bool = False, tracker: DryRunSink | None = None, **_legacy_kwargs) -> tuple[int, int]:
@@ -264,6 +266,8 @@ def handle_citizen(*, citizen: dict, nova_access: NovaAccess, kombit_access: Kom
 
 # pylint: disable=too-many-positional-arguments
 # NOTE: `action_sink` is a keyword-only optional parameter kept at the end to avoid breaking positional callers.
+
+
 def handle_case(case: dict, nova_access: NovaAccess | None = None, kombit_access: KombitAccess | None = None,
                 orchestrator_connection: OrchestratorConnection | None = None, step_sent: int = 0, baseline_date: str | None = None,
                 action_sink: DryRunSink | None = None) -> int:

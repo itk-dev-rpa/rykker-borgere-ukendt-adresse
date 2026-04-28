@@ -48,7 +48,7 @@ class TestFillTemplate:
     def test_fill_template_with_special_chars(self):
         """Test fill_template with special characters in name."""
         print("\n--- Testing fill_template with special chars ---")
-        template_path = Path(__file__).parent / "rykker_borgere" /  "templates" / "Rykker 1 - Ukendt adresse.docx"
+        template_path = Path(__file__).parent / "rykker_borgere" / "templates" / "Rykker 1 - Ukendt adresse.docx"
         output_path = Path(__file__).parent / "rykker_borgere" / "test_output_special.docx"
 
         try:
