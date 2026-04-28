@@ -13,12 +13,12 @@ Covers:
 from datetime import timedelta
 
 from robot_framework.process import handle_citizen, handle_case
-from robot_framework.dry_run_helpers import DryRunTracker
+from robot_framework.sinks import DryRunSink
 
 
 def _build_tracker_with_state(case_uuid: str, latest_step: int, last_date_iso: str):
-    """Helper to create a `DryRunTracker` with simulated Nova reminder state."""
-    return DryRunTracker(mock_state={
+    """Helper to create a `DryRunSink` with simulated Nova reminder state."""
+    return DryRunSink(mock_state={
         "queue": {},
         "nova_reminders": {
             case_uuid: {"latest_step": latest_step, "last_date": last_date_iso}
@@ -35,7 +35,7 @@ def test_new_case_without_baseline_establishes_rykker0(monkeypatch, orchestrator
     # Ensure registration status doesn't trigger SMS
     monkeypatch.setattr(sp, "check_registration_status", lambda cpr, acc: (False, False))
 
-    tracker = DryRunTracker(mock_state={})
+    tracker = DryRunSink(mock_state={})
     citizen = {"CPR": "0101011234", "Fornavn": "Ada"}
 
     # Act
@@ -44,8 +44,7 @@ def test_new_case_without_baseline_establishes_rykker0(monkeypatch, orchestrator
         nova_access=None,
         kombit_access=None,
         orchestrator_connection=orchestrator,
-        dry_run=True,
-        tracker=tracker,
+        action_sink=tracker,
     )
 
     # Assert: baseline note is simulated in dry-run, but no reminder yet
@@ -217,7 +216,7 @@ def test_handle_case_direct_send_when_window_met(orchestrator, fixed_now, fake_c
     """`handle_case` sends Rykker 1 when >14 days since baseline for step 0."""
     # Arrange: direct unit test of handle_case
     baseline = (fixed_now - timedelta(days=20)).isoformat()  # >14 days since step 0
-    tracker = DryRunTracker(mock_state={})
+    tracker = DryRunSink(mock_state={})
 
     # Act
     sent = handle_case(
@@ -225,10 +224,9 @@ def test_handle_case_direct_send_when_window_met(orchestrator, fixed_now, fake_c
         nova_access=None,
         kombit_access=None,
         orchestrator_connection=orchestrator,
-        dry_run=True,
-        tracker=tracker,
         step_sent=0,
         baseline_date=baseline,
+        action_sink=tracker,
     )
 
     # Assert

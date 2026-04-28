@@ -4,6 +4,7 @@
 # pylint: disable=duplicate-code
 
 import sys
+import os
 
 from OpenOrchestrator.orchestrator_connection.connection import OrchestratorConnection
 
@@ -22,11 +23,23 @@ def main():
     orchestrator_connection.log_trace("Robot Framework started.")
     initialize.initialize(orchestrator_connection)
 
+    # Determine sink for this run based on env/config (env has priority)
+    dry_run_env = os.getenv("DRY_RUN")
+    dry_run = (dry_run_env.lower() == "true") if isinstance(dry_run_env, str) else bool(getattr(config, "DRY_RUN", False))
+
+    # Build an action sink when in dry-run; None (or a future RealActionsSink) otherwise
+    # Use process.activate_dryrun to load any state overlays
+    action_sink = process.activate_dryrun(orchestrator_connection) if dry_run else None
+
+    # Optional batch start hook
+    if action_sink and hasattr(action_sink, "begin_batch"):
+        action_sink.begin_batch(correlation_id=None, metadata={"dry_run": dry_run})
+
     error_count = 0
     for _ in range(config.MAX_RETRY_COUNT):
         try:
             reset.reset(orchestrator_connection)
-            process.process(orchestrator_connection, dry_run=False)
+            process.process(orchestrator_connection, action_sink=action_sink)
             break
 
         # If any business rules are broken the robot should stop entirely.

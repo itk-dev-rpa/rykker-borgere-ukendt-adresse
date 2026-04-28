@@ -73,9 +73,9 @@ def fake_party():
 
 @pytest.fixture
 def tracker():
-    """Return a fresh `DryRunTracker` instance for each test."""
-    from robot_framework.dry_run_helpers import DryRunTracker
-    return DryRunTracker(mock_state={})
+    """Return a fresh `DryRunSink` instance for each test."""
+    from robot_framework.sinks import DryRunSink
+    return DryRunSink(mock_state={})
 
 
 @pytest.fixture(autouse=True)
