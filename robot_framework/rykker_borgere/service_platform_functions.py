@@ -33,7 +33,6 @@ def get_kombit_access(orchestrator_connection: OrchestratorConnection):
     return KombitAccess(config.CVR, certificate_path)
 
 
-
 def send_digital_post(kombit_access: KombitAccess, file_path: str, recipient_cpr: str):
     """Send digital post to recipient."""
     if not digital_post.is_registered(recipient_cpr, "digitalpost", kombit_access):
@@ -52,7 +51,6 @@ def send_digital_post(kombit_access: KombitAccess, file_path: str, recipient_cpr
         msg = message.create_digital_post_with_main_document("Rykker for adresseændring", sender, recipient, (send_file,))
         digital_post.send_message("Digital Post", msg, kombit_access)
     return True
-
 
 
 def send_sms(kombit_access: KombitAccess, recipient_cpr: str, language: str = "da"):
@@ -83,7 +81,6 @@ def send_sms(kombit_access: KombitAccess, recipient_cpr: str, language: str = "d
     msg = message.create_nemsms("Rykker for adresseændring", sms_text, sender, recipient)
     digital_post.send_message("NemSMS", msg, kombit_access)
     return True
-
 
 
 def check_registration_status(cpr: str, kombit_access: KombitAccess) -> tuple[bool, bool]:
