@@ -122,7 +122,7 @@ class RealActionsSink:
         return self._current_case_or_raise()["common"]["uuid"]
 
 
-class DryRunSink:
+class DryRunSink:  # pylint: disable=too-many-instance-attributes
     """Tracks actions that would be performed in a dry run.
 
     Acts as an ActionSink for process functions. Also carries optional
@@ -132,16 +132,33 @@ class DryRunSink:
     # Marker used by the process flow to decide whether to perform side-effects
     is_dry_run: bool = True
 
-    def __init__(self, mock_state: dict | None = None):
+    def __init__(self, mock_state: dict | None = None, verbose: bool = False):
         self.sms_actions = []
         self.reminder_actions = []
         self.queue_updates = []
         self.nova_notes = []
         self._batch_meta = {}
+        # When True, emit a one-line stdout pip per recorded action for live feedback.
+        self.verbose = verbose
+        self._current_case_label = ""
         # Optional simulated state overlays (used only in dry-run)
         mock_state = mock_state or {}
         self.mock_queue_state = mock_state.get("queue", {})
         self.mock_nova_reminders = mock_state.get("nova_reminders", {})
+
+    def _say(self, msg: str) -> None:
+        """Print a one-line progress pip when verbose mode is enabled."""
+        if self.verbose:
+            label = f" [{self._current_case_label}]" if self._current_case_label else ""
+            print(f"  →{label} {msg}", flush=True)
+
+    def set_current_case_context(self, case: dict) -> None:
+        """Capture the current case for use in verbose progress output."""
+        try:
+            case_number = case["caseAttributes"]["userFriendlyCaseNumber"]
+            self._current_case_label = f"sag {case_number}"
+        except (KeyError, TypeError):
+            self._current_case_label = ""
 
     def log_sms(self, cpr: str, first_name: str, language: str, reason: str = ""):
         """Log an SMS that would be sent."""
@@ -151,6 +168,7 @@ class DryRunSink:
             "language": language,
             "reason": reason
         })
+        self._say(f"SMS ({language}) → {first_name} ({util.mask_cpr(cpr)}) — {reason}")
 
     def log_reminder(self, cpr: str, first_name: str, case_number: str, step: int):
         """Log a reminder that would be sent."""
@@ -160,6 +178,7 @@ class DryRunSink:
             "case_number": case_number,
             "step": step
         })
+        self._say(f"Rykker {step} → {first_name} ({util.mask_cpr(cpr)}), sag {case_number}")
 
     def log_queue_update(self, encrypted_ref: str, digital_post: bool, nemsms: bool, case_uuid: str):
         """Log a queue update that would be performed."""
@@ -169,6 +188,7 @@ class DryRunSink:
             "nemsms": nemsms,
             "case_uuid": case_uuid
         })
+        self._say(f"Queue: digital_post={digital_post}, nemsms={nemsms}")
 
     def log_nova_note(self, case_uuid: str, note_type: str, details: str):
         """Log a Nova note that would be added."""
@@ -181,6 +201,7 @@ class DryRunSink:
     def establish_baseline(self, *, case_uuid: str, step: int = 0):
         """Record that we would establish a baseline (Rykker 0) now."""
         self.log_nova_note(case_uuid, "Rykker note", f"Rykker {step} (baseline)")
+        self._say(f"Baseline: Rykker {step}")
 
     def begin_batch(self, *, correlation_id: str | None = None, metadata: dict | None = None):
         """Optional hook to mark the beginning of a run/batch (no-op)."""

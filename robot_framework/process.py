@@ -40,9 +40,16 @@ def process(orchestrator_connection: OrchestratorConnection, action_sink: DryRun
 
     sms_sent_count = 0
     reminders_sent_count = 0
+    verbose = bool(getattr(sink, "verbose", False))
+    total = len(citizens_with_unknown_address)
 
     try:
-        for citizen in citizens_with_unknown_address:
+        for index, citizen in enumerate(citizens_with_unknown_address, start=1):
+            if verbose:
+                print(
+                    f"\n[{index}/{total}] {citizen['Fornavn']} ({util.mask_cpr(citizen['CPR'])})",
+                    flush=True,
+                )
             try:
                 sms_sent, reminder_sent = handle_citizen(
                     citizen=citizen,

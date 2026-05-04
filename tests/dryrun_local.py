@@ -1,5 +1,5 @@
-"""Run `process.process()` end-to-end against a real OpenOrchestrator
-connection but with a `DryRunSink`, so no side effects (SMS, Digital Post,
+"""Run process.process() end-to-end against a real OpenOrchestrator
+connection but with a DryRunSink, so no side effects (SMS, Digital Post,
 Nova writes, queue updates) are performed.
 
 Use this for local pre-deployment verification when you don't want to
@@ -20,18 +20,16 @@ Only the *write* operations are skipped.
 import argparse
 import os
 import sys
-from pathlib import Path
+from dotenv import load_dotenv
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from dotenv import load_dotenv  # noqa: E402
 from OpenOrchestrator.orchestrator_connection.connection import OrchestratorConnection  # noqa: E402
 
-from robot_framework import process  # noqa: E402
-from robot_framework.initialize import activate_dryrun  # noqa: E402
+from robot_framework import process
+from robot_framework.initialize import activate_dryrun
 
 
 def main() -> int:
+    """Parse args, build a real OO connection + DryRunSink, and run process()."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--state",
@@ -62,6 +60,7 @@ def main() -> int:
         "",
     )
     sink = activate_dryrun(oc)
+    sink.verbose = True
     process.process(oc, action_sink=sink)
     return 0
 

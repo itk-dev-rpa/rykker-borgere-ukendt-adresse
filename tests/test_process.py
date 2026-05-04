@@ -225,23 +225,21 @@ def test_no_case_found_returns_zero(monkeypatch, orchestrator, fixed_now, fake_c
 
     assert sms_sent == 0
     assert reminder_sent == 0
-    assert tracker.queue_updates == []
-    assert tracker.sms_actions == []
-    assert tracker.reminder_actions == []
+    assert not tracker.queue_updates
+    assert not tracker.sms_actions
+    assert not tracker.reminder_actions
 
 
 def test_http_error_on_registration_check_logs_and_returns_zero(monkeypatch, orchestrator, fixed_now, fake_case):
     """If check_registration_status raises HTTPError, citizen is skipped with an error log."""
     _ = fixed_now, fake_case
+    import types
     import requests
     from robot_framework.rykker_borgere import service_platform_functions as sp
 
-    class FakeResponse:
-        text = "boom"
-
     def raising(_cpr, _acc):
         err = requests.exceptions.HTTPError("boom")
-        err.response = FakeResponse()
+        err.response = types.SimpleNamespace(text="boom")
         raise err
 
     monkeypatch.setattr(sp, "check_registration_status", raising)
@@ -260,7 +258,7 @@ def test_http_error_on_registration_check_logs_and_returns_zero(monkeypatch, orc
     assert sms_sent == 0
     assert reminder_sent == 0
     assert any("Failed to check registration status" in e for e in orchestrator.errors)
-    assert tracker.queue_updates == []
+    assert not tracker.queue_updates
 
 
 def test_nemsms_already_registered_no_sms(monkeypatch, orchestrator, fixed_now, fake_case, patch_external_functions):
@@ -287,7 +285,7 @@ def test_nemsms_already_registered_no_sms(monkeypatch, orchestrator, fixed_now, 
     )
 
     assert sms_sent == 0
-    assert tracker.sms_actions == []
+    assert not tracker.sms_actions
 
 
 def test_first_time_citizen_no_previous_status_no_sms(monkeypatch, orchestrator, fixed_now, fake_case):
@@ -309,7 +307,7 @@ def test_first_time_citizen_no_previous_status_no_sms(monkeypatch, orchestrator,
     )
 
     assert sms_sent == 0
-    assert tracker.sms_actions == []
+    assert not tracker.sms_actions
 
 
 def test_mask_cpr():
