@@ -43,7 +43,7 @@ def process(orchestrator_connection: OrchestratorConnection, action_sink: DryRun
 
     # Get citizens with unknown address from SQL database
     db_driver = "Driver={ODBC Driver 17 for SQL Server};Server=FaellesSQL;Trusted_Connection=yes;"
-    citizens_with_unknown_address = get_citizens_from_sql(db_driver, orchestrator_connection)
+    citizens_with_unknown_address = get_citizens_from_sql(db_driver)
 
     orchestrator_connection.log_info(f"Found {len(citizens_with_unknown_address)} citizens with unknown address.")
 
@@ -82,7 +82,7 @@ def process(orchestrator_connection: OrchestratorConnection, action_sink: DryRun
         try:
             tracker.end_batch()
         except Exception:  # pylint: disable=broad-exception-caught
-            pass
+            orchestrator_connection.log_error("Batch end error")
 
 
 def activate_dryrun(orchestrator_connection: OrchestratorConnection) -> DryRunSink:
@@ -93,7 +93,7 @@ def activate_dryrun(orchestrator_connection: OrchestratorConnection) -> DryRunSi
     try:
         load_dotenv()  # no-op hvis .env ikke findes
     except Exception:  # pylint: disable=broad-exception-caught
-        pass
+        orchestrator_connection.log_error("Env could not be loaded")
 
     mock_state = None
     try:
@@ -117,7 +117,7 @@ def activate_dryrun(orchestrator_connection: OrchestratorConnection) -> DryRunSi
     return DryRunSink(mock_state)
 
 
-def get_citizens_from_sql(db_connection: str, _orchestrator_connection: OrchestratorConnection) -> list[dict]:
+def get_citizens_from_sql(db_connection: str) -> list[dict]:
     """Get citizens with unknown address from SQL database.
 
     Args:
@@ -173,7 +173,7 @@ def handle_citizen(*, citizen: dict, nova_access: NovaAccess, kombit_access: Kom
     cases = nova_functions.get_cases_by_kle_and_cpr(nova_access, config.KLE_NUMBER, cpr)
 
     if not cases:
-        orchestrator_connection.log_trace(f"No case found for {first_name} (CPR: {cpr[:6]}****)")
+        orchestrator_connection.log_trace(f"No case found for {first_name} (CPR: ******-{cpr[-4:]})")
         return 0, 0
 
     # Use the first case if multiple exist
@@ -185,7 +185,7 @@ def handle_citizen(*, citizen: dict, nova_access: NovaAccess, kombit_access: Kom
         try:
             sink.set_current_case_context(case)
         except Exception:  # pylint: disable=broad-exception-caught
-            pass
+            orchestrator_connection.log_error("Set context failed")
 
     # Check Digital Post and NemSMS registration status
     try:
@@ -252,8 +252,6 @@ def handle_citizen(*, citizen: dict, nova_access: NovaAccess, kombit_access: Kom
     # Handle reminder sending logic
     reminder_result = handle_case(
         case,
-        nova_access,
-        kombit_access,
         orchestrator_connection,
         step_sent,
         baseline_date,
@@ -268,9 +266,7 @@ def handle_citizen(*, citizen: dict, nova_access: NovaAccess, kombit_access: Kom
 # NOTE: `action_sink` is a keyword-only optional parameter kept at the end to avoid breaking positional callers.
 
 
-def handle_case(case: dict, nova_access: NovaAccess | None = None, kombit_access: KombitAccess | None = None,
-                orchestrator_connection: OrchestratorConnection | None = None, step_sent: int = 0, baseline_date: str | None = None,
-                action_sink: DryRunSink | None = None) -> int:
+def handle_case(case: dict, orchestrator_connection: OrchestratorConnection | None = None, step_sent: int = 0, baseline_date: str | None = None, action_sink: DryRunSink | None = None) -> int:
     """Handle reminder sending for a single case.
 
     Args:
@@ -284,9 +280,6 @@ def handle_case(case: dict, nova_access: NovaAccess | None = None, kombit_access
     Returns:
         Number of reminders sent (0 or 1).
     """
-
-    # Backward-compat: accept nova_access/kombit_access but do not use them here
-    del nova_access, kombit_access
 
     if orchestrator_connection is None:
         raise ValueError("orchestrator_connection is required")

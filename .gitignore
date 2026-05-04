@@ -162,7 +162,11 @@ cython_debug/
 .vscode/
 uv.lock
 test/
+robot_framework/tmp/*
+~$*
+
+*.pem
 
 # Local dry-run simulation files
-robot_framework/dry_run_state.local.json
+robot_framework/dry_run_state.json
 *.local.json
