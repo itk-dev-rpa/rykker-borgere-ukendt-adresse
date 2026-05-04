@@ -186,7 +186,7 @@ def test_get_notes_returns_empty_when_expected_zero(mock_get_notes):
     """`expected_notes=0` (default) skips the loop entirely without calling upstream."""
     notes = nova_functions.get_notes(Mock(), "case-uuid-123")
 
-    assert notes == []
+    assert not notes
     assert mock_get_notes.call_count == 0
 
 
