@@ -27,9 +27,8 @@ def main():
     dry_run_env = os.getenv("DRY_RUN")
     dry_run = (dry_run_env.lower() == "true") if isinstance(dry_run_env, str) else bool(getattr(config, "DRY_RUN", False))
 
-    # Build an action sink when in dry-run; None (or a future RealActionsSink) otherwise
-    # Use process.activate_dryrun to load any state overlays
-    action_sink = process.activate_dryrun(orchestrator_connection) if dry_run else None
+    # Build an action sink when in dry-run; None (process builds RealActionsSink) otherwise
+    action_sink = initialize.activate_dryrun(orchestrator_connection) if dry_run else None
 
     # Optional batch start hook
     if action_sink and hasattr(action_sink, "begin_batch"):

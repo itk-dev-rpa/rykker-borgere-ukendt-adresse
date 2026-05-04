@@ -98,7 +98,7 @@ class RealActionsSink:
         # Build assets
         template_to_use = f"rykker_borgere/templates/Rykker {step} - Ukendt adresse.docx"
         letter_name = f"Rykker {step} - Adresse.docx"
-        deadline_date = datetime.now() + timedelta(days=30)
+        deadline_date = datetime.now() + timedelta(days=config.LETTER_DEADLINE_DAYS)
         letter_path = util.fill_template(template_to_use, f"tmp/{letter_name}", first_name, deadline_date, case_number)
         pdf_path = util.convert_docx_to_pdf(letter_path, "tmp/")
         # Upload and send
@@ -201,7 +201,7 @@ class DryRunSink:
         orchestrator_connection.log_info(f"\n📱 SMS der ville blive sendt: {len(self.sms_actions)}")
         if self.sms_actions:
             for action in self.sms_actions:
-                masked_cpr = f"{action['cpr'][:6]}****"
+                masked_cpr = util.mask_cpr(action['cpr'])
                 reason_text = f" ({action['reason']})" if action['reason'] else ""
                 orchestrator_connection.log_info(
                     f"  - {action['first_name']} (CPR: {masked_cpr}) - Sprog: {action['language']}{reason_text}"
@@ -211,7 +211,7 @@ class DryRunSink:
         orchestrator_connection.log_info(f"\n📨 Rykkere der ville blive sendt: {len(self.reminder_actions)}")
         if self.reminder_actions:
             for action in self.reminder_actions:
-                masked_cpr = f"{action['cpr'][:6]}****"
+                masked_cpr = util.mask_cpr(action['cpr'])
                 orchestrator_connection.log_info(
                     f"  - Sag {action['case_number']}: {action['first_name']} (CPR: {masked_cpr}) - Rykker {action['step']}"
                 )

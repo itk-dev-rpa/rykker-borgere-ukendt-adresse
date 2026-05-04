@@ -69,8 +69,7 @@ def test_14_days_since_rykker0_sends_rykker1(orchestrator, fixed_now, fake_case)
         nova_access=None,
         kombit_access=None,
         orchestrator_connection=orchestrator,
-        dry_run=True,
-        tracker=tracker,
+        action_sink=tracker,
     )
 
     # Assert
@@ -94,8 +93,7 @@ def test_30_days_since_rykker1_sends_rykker2(orchestrator, fixed_now, fake_case)
         nova_access=None,
         kombit_access=None,
         orchestrator_connection=orchestrator,
-        dry_run=True,
-        tracker=tracker,
+        action_sink=tracker,
     )
 
     # Assert
@@ -127,8 +125,7 @@ def test_nemsms_status_change_triggers_sms_when_not_sending_soon(monkeypatch, or
         nova_access=None,
         kombit_access=None,
         orchestrator_connection=orchestrator,
-        dry_run=True,
-        tracker=tracker,
+        action_sink=tracker,
     )
 
     # Assert: two SMS (da+en), no reminder
@@ -156,8 +153,7 @@ def test_nemsms_status_change_suppressed_when_sending_soon(monkeypatch, orchestr
         nova_access=None,
         kombit_access=None,
         orchestrator_connection=orchestrator,
-        dry_run=True,
-        tracker=tracker,
+        action_sink=tracker,
     )
 
     # Assert: SMS suppressed due to sending_rykker_soon
@@ -179,8 +175,7 @@ def test_too_early_for_next_reminder_no_action(orchestrator, fixed_now, fake_cas
         nova_access=None,
         kombit_access=None,
         orchestrator_connection=orchestrator,
-        dry_run=True,
-        tracker=tracker,
+        action_sink=tracker,
     )
 
     # Assert
@@ -202,8 +197,7 @@ def test_queue_tracking_logged(orchestrator, fixed_now, fake_case):
         nova_access=None,
         kombit_access=None,
         orchestrator_connection=orchestrator,
-        dry_run=True,
-        tracker=tracker,
+        action_sink=tracker,
     )
 
     # Assert: queue updated once per citizen handled
@@ -221,8 +215,6 @@ def test_handle_case_direct_send_when_window_met(orchestrator, fixed_now, fake_c
     # Act
     sent = handle_case(
         case=fake_case,
-        nova_access=None,
-        kombit_access=None,
         orchestrator_connection=orchestrator,
         step_sent=0,
         baseline_date=baseline,

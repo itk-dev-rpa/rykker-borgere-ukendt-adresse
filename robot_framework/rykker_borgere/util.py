@@ -45,6 +45,17 @@ def get_step(notes: list[JournalNote]) -> tuple[int, JournalNote]:
     return new_step, newest_note
 
 
+def mask_cpr(cpr: str) -> str:
+    """Mask a CPR number for log output.
+
+    Hides the date-of-birth (first 6 digits) and shows only the last 4 digits,
+    e.g. "0101011234" -> "******-1234".
+    """
+    if not cpr or len(cpr) < 4:
+        return "***********"
+    return f"******-{cpr[-4:]}"
+
+
 def encrypt_cpr(cpr: str, first_name: str) -> str:
     """Encrypt CPR and first name using SHA256 hashing.
 

@@ -34,6 +34,16 @@ KLE_NUMBER = "23.05.00"
 # SQL query for finding citizens with unknown address
 SQL_QUERY = "SELECT * FROM [DWH].[Mart].[AdresseAktuel] WHERE Vejkode = 9901 AND Myndighed = 751"
 
+# Connection string for the DWH SQL Server.
+# Driver and server can be overridden by drift without code change.
+SQL_CONN_STRING = "Driver={ODBC Driver 17 for SQL Server};Server=FaellesSQL;Trusted_Connection=yes;"
+
+# Reminder timing (in days)
+REMINDER_INITIAL_INTERVAL_DAYS = 14   # From baseline (Rykker 0) to Rykker 1
+REMINDER_FOLLOWUP_INTERVAL_DAYS = 30  # Between subsequent reminders
+SUPPRESS_SMS_WINDOW_DAYS = 7          # Suppress NemSMS-change SMS within N days of next reminder
+LETTER_DEADLINE_DAYS = 30             # Deadline written into the reminder letter
+
 KEYVAULT_CREDENTIALS = "Keyvault"
 KEYVAULT_URI = "Keyvault URI"
 KEYVAULT_PATH = "Digital_Post_Ukendt_Adresse"
