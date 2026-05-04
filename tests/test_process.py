@@ -206,6 +206,120 @@ def test_queue_tracking_logged(orchestrator, fixed_now, fake_case):
     assert upd["case_uuid"] == case_uuid
 
 
+def test_no_case_found_returns_zero(monkeypatch, orchestrator, fixed_now, fake_case):
+    """If no Nova case is found for citizen, no SMS or reminder action is taken."""
+    _ = fixed_now, fake_case
+    from robot_framework.rykker_borgere import nova_functions as nf
+    monkeypatch.setattr(nf, "get_cases_by_kle_and_cpr", lambda access, kle, cpr: [])
+
+    tracker = DryRunSink(mock_state={})
+    citizen = {"CPR": "0101011234", "Fornavn": "Ada"}
+
+    sms_sent, reminder_sent = handle_citizen(
+        citizen=citizen,
+        nova_access=None,
+        kombit_access=None,
+        orchestrator_connection=orchestrator,
+        action_sink=tracker,
+    )
+
+    assert sms_sent == 0
+    assert reminder_sent == 0
+    assert tracker.queue_updates == []
+    assert tracker.sms_actions == []
+    assert tracker.reminder_actions == []
+
+
+def test_http_error_on_registration_check_logs_and_returns_zero(monkeypatch, orchestrator, fixed_now, fake_case):
+    """If check_registration_status raises HTTPError, citizen is skipped with an error log."""
+    _ = fixed_now, fake_case
+    import requests
+    from robot_framework.rykker_borgere import service_platform_functions as sp
+
+    class FakeResponse:
+        text = "boom"
+
+    def raising(_cpr, _acc):
+        err = requests.exceptions.HTTPError("boom")
+        err.response = FakeResponse()
+        raise err
+
+    monkeypatch.setattr(sp, "check_registration_status", raising)
+
+    tracker = DryRunSink(mock_state={})
+    citizen = {"CPR": "0101011234", "Fornavn": "Ada"}
+
+    sms_sent, reminder_sent = handle_citizen(
+        citizen=citizen,
+        nova_access=None,
+        kombit_access=None,
+        orchestrator_connection=orchestrator,
+        action_sink=tracker,
+    )
+
+    assert sms_sent == 0
+    assert reminder_sent == 0
+    assert any("Failed to check registration status" in e for e in orchestrator.errors)
+    assert tracker.queue_updates == []
+
+
+def test_nemsms_already_registered_no_sms(monkeypatch, orchestrator, fixed_now, fake_case, patch_external_functions):
+    """When previous status already had nemsms=True, no SMS is triggered even if still True."""
+    queue_store = patch_external_functions["queue_store"]
+    enc_key = "enc:0101011234"
+    queue_store[enc_key] = {"digital_post": False, "nemsms": True, "case_uuid": fake_case["common"]["uuid"]}
+
+    from robot_framework.rykker_borgere import service_platform_functions as sp
+    monkeypatch.setattr(sp, "check_registration_status", lambda cpr, acc: (False, True))
+
+    case_uuid = fake_case["common"]["uuid"]
+    baseline = (fixed_now - timedelta(days=1)).isoformat()
+    tracker = _build_tracker_with_state(case_uuid, latest_step=0, last_date_iso=baseline)
+
+    citizen = {"CPR": "0101011234", "Fornavn": "Ada"}
+
+    sms_sent, _ = handle_citizen(
+        citizen=citizen,
+        nova_access=None,
+        kombit_access=None,
+        orchestrator_connection=orchestrator,
+        action_sink=tracker,
+    )
+
+    assert sms_sent == 0
+    assert tracker.sms_actions == []
+
+
+def test_first_time_citizen_no_previous_status_no_sms(monkeypatch, orchestrator, fixed_now, fake_case):
+    """When previous_status is None (first time seeing citizen), no NemSMS-change SMS is sent."""
+    _ = fixed_now, fake_case
+    # NemSMS now true, but no previous queue entry -> no comparison possible
+    from robot_framework.rykker_borgere import service_platform_functions as sp
+    monkeypatch.setattr(sp, "check_registration_status", lambda cpr, acc: (False, True))
+
+    tracker = DryRunSink(mock_state={})
+    citizen = {"CPR": "0101011234", "Fornavn": "Ada"}
+
+    sms_sent, _ = handle_citizen(
+        citizen=citizen,
+        nova_access=None,
+        kombit_access=None,
+        orchestrator_connection=orchestrator,
+        action_sink=tracker,
+    )
+
+    assert sms_sent == 0
+    assert tracker.sms_actions == []
+
+
+def test_mask_cpr():
+    """`mask_cpr` masks date-of-birth and shows only last 4 digits."""
+    from robot_framework.rykker_borgere.util import mask_cpr
+    assert mask_cpr("0101011234") == "******-1234"
+    assert mask_cpr("") == "***********"
+    assert mask_cpr("123") == "***********"
+
+
 def test_handle_case_direct_send_when_window_met(orchestrator, fixed_now, fake_case):
     """`handle_case` sends Rykker 1 when >14 days since baseline for step 0."""
     # Arrange: direct unit test of handle_case
