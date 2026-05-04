@@ -78,7 +78,7 @@ def tracker():
     return DryRunSink(mock_state={})
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def patch_datetime_now(monkeypatch, fixed_now):
     """Patch `datetime.now()` inside `robot_framework.process` to a fixed value."""
     from robot_framework import process
@@ -101,7 +101,7 @@ def patch_datetime_now(monkeypatch, fixed_now):
     yield
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def patch_external_functions(monkeypatch, fake_case, fake_party):
     """Patch external systems (Nova, Service Platform, Queue, Event log) used by process."""
     # Patch nova_functions used throughout process

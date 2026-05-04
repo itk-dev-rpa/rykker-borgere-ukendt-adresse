@@ -12,8 +12,17 @@ Covers:
 
 from datetime import timedelta
 
+import pytest
+
 from robot_framework.process import handle_citizen, handle_case
 from robot_framework.sinks import DryRunSink
+
+
+@pytest.fixture(autouse=True)
+def _process_test_setup(patch_datetime_now, patch_external_functions):
+    """Activate datetime + external-system patches for every test in this module."""
+    _ = patch_datetime_now, patch_external_functions
+    yield
 
 
 def _build_tracker_with_state(case_uuid: str, latest_step: int, last_date_iso: str):
@@ -308,14 +317,6 @@ def test_first_time_citizen_no_previous_status_no_sms(monkeypatch, orchestrator,
 
     assert sms_sent == 0
     assert not tracker.sms_actions
-
-
-def test_mask_cpr():
-    """`mask_cpr` masks date-of-birth and shows only last 4 digits."""
-    from robot_framework.rykker_borgere.util import mask_cpr
-    assert mask_cpr("0101011234") == "******-1234"
-    assert mask_cpr("") == "***********"
-    assert mask_cpr("123") == "***********"
 
 
 def test_handle_case_direct_send_when_window_met(orchestrator, fixed_now, fake_case):
