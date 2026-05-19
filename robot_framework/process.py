@@ -40,45 +40,37 @@ def process(orchestrator_connection: OrchestratorConnection, action_sink: DryRun
 
     sms_sent_count = 0
     reminders_sent_count = 0
-    verbose = bool(getattr(sink, "verbose", False))
+    verbose = sink.verbose
     total = len(citizens_with_unknown_address)
 
-    try:
-        for index, citizen in enumerate(citizens_with_unknown_address, start=1):
-            if verbose:
-                print(
-                    f"\n[{index}/{total}] {citizen['Fornavn']} ({util.mask_cpr(citizen['CPR'])})",
-                    flush=True,
-                )
-            try:
-                sms_sent, reminder_sent = handle_citizen(
-                    citizen=citizen,
-                    nova_access=nova_access,
-                    kombit_access=kombit_access,
-                    orchestrator_connection=orchestrator_connection,
-                    action_sink=sink,
-                )
-                sms_sent_count += sms_sent
-                reminders_sent_count += reminder_sent
-            except Exception as e:  # pylint: disable=broad-exception-caught
-                orchestrator_connection.log_error(f"Error handling citizen {citizen['Fornavn']}: {str(e)}")
-                continue
-
-        is_dry = bool(getattr(sink, "is_dry_run", False))
-        if is_dry and hasattr(sink, "print_report"):
-            sink.print_report(orchestrator_connection)
-        else:
-            itk_dev_event_log.emit(orchestrator_connection.process_name, "SMS sent", sms_sent_count)
-            itk_dev_event_log.emit(orchestrator_connection.process_name, "Reminders sent", reminders_sent_count)
-            orchestrator_connection.log_info(
-                f"Process completed. SMS sent: {sms_sent_count}, Reminders sent: {reminders_sent_count}"
+    for index, citizen in enumerate(citizens_with_unknown_address, start=1):
+        if verbose:
+            print(
+                f"\n[{index}/{total}] {citizen['Fornavn']} ({util.mask_cpr(citizen['CPR'])})",
+                flush=True,
             )
-    finally:
-        if hasattr(sink, "end_batch"):
-            try:
-                sink.end_batch()
-            except Exception as e:  # pylint: disable=broad-exception-caught
-                orchestrator_connection.log_error(f"end_batch() raised: {e}")
+        try:
+            sms_sent, reminder_sent = handle_citizen(
+                citizen=citizen,
+                nova_access=nova_access,
+                kombit_access=kombit_access,
+                orchestrator_connection=orchestrator_connection,
+                action_sink=sink,
+            )
+            sms_sent_count += sms_sent
+            reminders_sent_count += reminder_sent
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            orchestrator_connection.log_error(f"Error handling citizen {citizen['Fornavn']}: {str(e)}")
+            continue
+
+    if sink.is_dry_run:
+        sink.print_report(orchestrator_connection)
+    else:
+        itk_dev_event_log.emit(orchestrator_connection.process_name, "SMS sent", sms_sent_count)
+        itk_dev_event_log.emit(orchestrator_connection.process_name, "Reminders sent", reminders_sent_count)
+        orchestrator_connection.log_info(
+            f"Process completed. SMS sent: {sms_sent_count}, Reminders sent: {reminders_sent_count}"
+        )
 
 
 def get_citizens_from_sql(db_connection: str) -> list[dict]:
@@ -107,7 +99,7 @@ def _resolve_baseline_state(*, case: dict, case_uuid: str, nova_access: NovaAcce
     """
     step_sent, baseline_date, interval_days = nova_functions.get_next_reminder_baseline(case, nova_access)
 
-    if is_dry and hasattr(action_sink, "mock_nova_reminders"):
+    if is_dry:
         mock = action_sink.mock_nova_reminders.get(case_uuid)
         if mock:
             step_sent = mock.get("latest_step", step_sent)
@@ -120,8 +112,7 @@ def _resolve_baseline_state(*, case: dict, case_uuid: str, nova_access: NovaAcce
     if step_sent == 0 and not baseline_date:
         baseline_date = datetime.now().isoformat()
         try:
-            if hasattr(action_sink, "establish_baseline"):
-                action_sink.establish_baseline(case_uuid=case_uuid, step=0)
+            action_sink.establish_baseline(case_uuid=case_uuid, step=0)
             orchestrator_connection.log_info(
                 f"Etablerede baseline: 'Rykker 0 sendt' for sag {case['caseAttributes']['userFriendlyCaseNumber']}. "
                 f"Første rykker tidligst om {config.REMINDER_INITIAL_INTERVAL_DAYS} dage."
@@ -147,7 +138,7 @@ def handle_citizen(*, citizen: dict, nova_access: NovaAccess, kombit_access: Kom
     Returns:
         Tuple of (sms_sent_count, reminder_sent_count).
     """
-    is_dry = bool(getattr(action_sink, "is_dry_run", False))
+    is_dry = action_sink.is_dry_run
     cpr = citizen["CPR"]
     first_name = citizen["Fornavn"]
     masked = util.mask_cpr(cpr)
@@ -160,12 +151,6 @@ def handle_citizen(*, citizen: dict, nova_access: NovaAccess, kombit_access: Kom
     case = cases[0]
     case_uuid = case["common"]["uuid"]
 
-    if hasattr(action_sink, "set_current_case_context"):
-        try:
-            action_sink.set_current_case_context(case)
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            orchestrator_connection.log_error(f"set_current_case_context failed for {first_name}: {e}")
-
     try:
         digital_post_registered, nemsms_registered = service_platform_functions.check_registration_status(cpr, kombit_access)
     except HTTPError as e:
@@ -175,7 +160,7 @@ def handle_citizen(*, citizen: dict, nova_access: NovaAccess, kombit_access: Kom
     encrypted_ref = util.encrypt_cpr(cpr, first_name)
     previous_status = util.get_queue_element(orchestrator_connection, config.QUEUE_NAME, encrypted_ref)
 
-    if is_dry and hasattr(action_sink, "mock_queue_state"):
+    if is_dry:
         simulated_prev = action_sink.mock_queue_state.get(encrypted_ref)
         if simulated_prev is not None:
             previous_status = simulated_prev
@@ -199,12 +184,12 @@ def handle_citizen(*, citizen: dict, nova_access: NovaAccess, kombit_access: Kom
             and previous_status
             and not previous_status.get("nemsms", False)
             and nemsms_registered):
-        action_sink.log_sms(cpr, first_name, "da", "NemSMS-status ændret fra ikke-tilmeldt til tilmeldt")
-        action_sink.log_sms(cpr, first_name, "en", "NemSMS-status ændret fra ikke-tilmeldt til tilmeldt")
+        action_sink.send_sms(case, cpr, first_name, "da", "NemSMS-status ændret fra ikke-tilmeldt til tilmeldt")
+        action_sink.send_sms(case, cpr, first_name, "en", "NemSMS-status ændret fra ikke-tilmeldt til tilmeldt")
         sms_sent = 2
         orchestrator_connection.log_info(f"SMS action registered for {first_name} due to NemSMS status change.")
 
-    action_sink.log_queue_update(encrypted_ref, digital_post_registered, nemsms_registered, case_uuid)
+    action_sink.update_queue(encrypted_ref, digital_post_registered, nemsms_registered, case_uuid)
 
     reminder_sent = handle_case(
         case=case,
@@ -253,7 +238,7 @@ def handle_case(*, case: dict, orchestrator_connection: OrchestratorConnection,
         return 0
 
     try:
-        action_sink.log_reminder(cpr, case_party.name, case_number, next_step)
+        action_sink.send_reminder(case, cpr, case_party.name, next_step)
         itk_dev_event_log.emit(orchestrator_connection.process_name, f"Rykker {next_step} sendt")
         orchestrator_connection.log_info(f"Registered reminder {next_step} for case {case_number}")
         return 1

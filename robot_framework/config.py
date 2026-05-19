@@ -66,3 +66,5 @@ CASEWORKER = Caseworker(
 )
 
 PATH_TO_LIBREOFFICE = "C:/Program Files/LibreOffice/program/soffice.exe"
+
+CASE_BATCH = 100

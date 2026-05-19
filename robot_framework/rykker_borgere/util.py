@@ -83,11 +83,10 @@ def get_queue_element(  # pylint: disable=too-many-positional-arguments
     Returns:
         Queue element data as dict if found, None otherwise.
     """
-    queue_elements = orchestrator_connection.get_queue_elements(queue_name, limit=99999999)
-    for element in queue_elements:
-        if element.reference == reference:
-            return json.loads(element.data) if element.data else None
-    return None
+    queue_elements = orchestrator_connection.get_queue_elements(queue_name, reference)
+    if len(queue_elements) == 0:
+        return None
+    return json.loads(queue_elements[0].data) if queue_elements[0].data else None
 
 
 def update_queue_element(  # pylint: disable=too-many-positional-arguments
@@ -104,11 +103,9 @@ def update_queue_element(  # pylint: disable=too-many-positional-arguments
         case_uuid: UUID of the Nova case.
     """
     # Delete existing element if it exists
-    queue_elements = orchestrator_connection.get_queue_elements(queue_name, limit=99999999)
-    for element in queue_elements:
-        if element.reference == reference:
-            orchestrator_connection.delete_queue_element(element.id)
-            break
+    queue_elements = orchestrator_connection.get_queue_elements(queue_name, reference)
+    if len(queue_elements) > 0:
+        orchestrator_connection.delete_queue_element(reference)
 
     # Create new element with updated data
     data = {

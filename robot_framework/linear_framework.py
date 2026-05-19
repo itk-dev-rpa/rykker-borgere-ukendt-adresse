@@ -30,10 +30,6 @@ def main():
     # Build an action sink when in dry-run; None (process builds RealActionsSink) otherwise
     action_sink = initialize.activate_dryrun(orchestrator_connection) if dry_run else None
 
-    # Optional batch start hook
-    if action_sink and hasattr(action_sink, "begin_batch"):
-        action_sink.begin_batch(correlation_id=None, metadata={"dry_run": dry_run})
-
     error_count = 0
     for _ in range(config.MAX_RETRY_COUNT):
         try:

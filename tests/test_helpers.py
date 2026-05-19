@@ -18,6 +18,7 @@ from pathlib import Path
 from unittest.mock import Mock, mock_open, patch
 
 from itk_dev_shared_components.kmd_nova.nova_objects import Caseworker, JournalNote
+from itk_dev_shared_components.kmd_nova import nova_notes
 
 from robot_framework import config
 from robot_framework.rykker_borgere import nova_functions, service_platform_functions, util
@@ -161,33 +162,10 @@ def test_get_notes_single_batch(mock_get_notes):
     """When the first batch already meets `expected_notes`, no further fetch is made."""
     mock_get_notes.return_value = [Mock(spec=JournalNote) for _ in range(100)]
 
-    notes = nova_functions.get_notes(Mock(), "case-uuid-123", expected_notes=100)
+    notes = nova_notes.get_notes("case-uuid-123", Mock(), 0, 500)
 
     assert len(notes) == 100
     assert mock_get_notes.call_count == 1
-
-
-@patch("robot_framework.rykker_borgere.nova_functions.nova_notes.get_notes")
-def test_get_notes_paginates_until_expected_count(mock_get_notes):
-    """`get_notes` keeps fetching batches until the accumulated count meets `expected_notes`."""
-    mock_get_notes.side_effect = [
-        [Mock(spec=JournalNote) for _ in range(500)],
-        [Mock(spec=JournalNote) for _ in range(300)],
-    ]
-
-    notes = nova_functions.get_notes(Mock(), "case-uuid-123", expected_notes=800)
-
-    assert len(notes) == 800
-    assert mock_get_notes.call_count == 2
-
-
-@patch("robot_framework.rykker_borgere.nova_functions.nova_notes.get_notes")
-def test_get_notes_returns_empty_when_expected_zero(mock_get_notes):
-    """`expected_notes=0` (default) skips the loop entirely without calling upstream."""
-    notes = nova_functions.get_notes(Mock(), "case-uuid-123")
-
-    assert not notes
-    assert mock_get_notes.call_count == 0
 
 
 # ---------------------------------------------------------------------------

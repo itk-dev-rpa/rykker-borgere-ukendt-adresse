@@ -45,11 +45,6 @@ def get_cases(nova_access: NovaAccess):
             "numberOfDocuments": True,
             "numberOfJournalNotes": True
         },
-        "paging": {
-            "startRow": 1,
-            "numberOfRows": 500,
-            "calculateTotalNumberOfRows": True
-        },
     }
     params = {"api-version": "2.0-Case"}
     headers = {'Content-Type': 'application/json', 'Authorization': f"Bearer {nova_access.get_bearer_token()}"}
@@ -58,43 +53,18 @@ def get_cases(nova_access: NovaAccess):
     more_cases = True
     url = urllib.parse.urljoin(nova_access.domain, "api/Case/GetList")
     start_row = 1
-    row_batch = 500
     while more_cases:
         paging = {
                 "startRow": start_row,
-                "numberOfRows": row_batch,
-                "calculateTotalNumberOfRows": True
+                "numberOfRows": config.CASE_BATCH
         }
         payload["paging"] = paging
         response = requests.put(url, params=params, headers=headers, json=payload, timeout=60)
         response.raise_for_status()
         more_cases = response.json()["pagingInformation"]['hasMoreRows']
         cases.extend(response.json()["cases"])
-        start_row += row_batch
+        start_row += config.CASE_BATCH
     return cases
-
-
-def get_test_case(nova_access: NovaAccess):
-    """Get all cases from Nova as dictionaries."""
-    params = {"api-version": "2.0-Case"}
-    headers = {'Content-Type': 'application/json', 'Authorization': f"Bearer {nova_access.get_bearer_token()}"}
-    payload = nova_cases._create_payload(case_uuid="50f6b040-613d-47d9-8c5e-eccbbef3803c")  # pylint: disable=protected-access
-    url = urllib.parse.urljoin(nova_access.domain, "api/Case/GetList")
-    response = requests.put(url, params=params, headers=headers, json=payload, timeout=60)
-    response.raise_for_status()
-    return response.json()["cases"][0]
-
-
-def get_notes(nova_access: NovaAccess, case_id: str, expected_notes: int = 0):
-    """Get all notes from a case."""
-    start_row = 0
-    row_batch = 500
-    all_notes = []
-    while len(all_notes) < expected_notes:
-        new_notes = nova_notes.get_notes(case_id, nova_access, start_row, row_batch)
-        all_notes.extend(new_notes)
-        start_row += row_batch
-    return all_notes
 
 
 def upload_document(nova_access: NovaAccess, document_path: str, document_title: str, case_id: str):
@@ -103,24 +73,6 @@ def upload_document(nova_access: NovaAccess, document_path: str, document_title:
         document_id = nova_documents.upload_document(file, document_title, nova_access)
         nova_doc = Document(uuid=document_id, title=document_title, sensitivity="Følsomme", document_type="Udgående", description="Rykker sendt til borger omkring ukendt adresse.", approved=False)
         nova_documents.attach_document_to_case(case_id, nova_doc, nova_access)
-
-
-def _import_document_to_case(nova_access: NovaAccess, case_id: str, document_id: str, document_title: str):
-    """Set a document to a case."""
-    payload = {
-        "common": {
-            "transactionId": str(uuid.uuid4()),
-            "uuid": document_id
-        },
-        "caseUuid": case_id,
-        "title": document_title,
-        "description": "Rykker sendt til borger omkring ukendt adresse."
-    }
-    url = urllib.parse.urljoin(nova_access.domain, "api/Document/Import/")
-    params = {"api-version": "2.0-Case"}
-    headers = {'Content-Type': 'application/json', 'Authorization': f"Bearer {nova_access.get_bearer_token()}"}
-    response = requests.post(url, params=params, headers=headers, json=payload, timeout=60)
-    response.raise_for_status()
 
 
 def update_case(case_uuid: str, nova_access: NovaAccess,
@@ -183,9 +135,6 @@ def get_cases_by_kle_and_cpr(nova_access: NovaAccess, kle_number: str, cpr: str)
             "states": [
                 {"progressState": "Opstaaet"},
                 {"progressState": "Oplyst"},
-                {"progressState": "Afgjort"},
-                {"progressState": "Bestilt"},
-                {"progressState": "Udfoert"}
             ]
         },
         "caseGetOutput": {
@@ -283,7 +232,7 @@ def get_latest_reminder_info(case_uuid: str, nova_access: NovaAccess) -> tuple[i
         - step_number is 0 if no reminders have been sent, otherwise the number from the latest reminder
         - last_reminder_date is None if no reminders sent, otherwise ISO format date string
     """
-    notes = get_notes(nova_access, case_uuid, expected_notes=0)
+    notes = nova_notes.get_notes(case_uuid, nova_access, 0, 500)
 
     latest_step = 0
     latest_date = None
@@ -320,7 +269,7 @@ def get_single_cpr_case_party(case: dict) -> CaseParty | None:
 
 def get_latest_sms_info(case_uuid: str, nova_access: NovaAccess) -> str | None:
     """Return the ISO date of the latest "SMS sendt" note, or None if none found."""
-    notes = get_notes(nova_access, case_uuid, expected_notes=0)
+    notes = nova_notes.get_notes(case_uuid, nova_access, 0, 500)
     latest_date = None
     for note in notes:
         if note.title and note.title.strip() == "SMS sendt":
