@@ -184,8 +184,8 @@ def handle_citizen(*, citizen: dict, nova_access: NovaAccess, kombit_access: Kom
             and previous_status
             and not previous_status.get("nemsms", False)
             and nemsms_registered):
-        action_sink.send_sms(case, cpr, first_name, "da", "NemSMS-status ændret fra ikke-tilmeldt til tilmeldt")
-        action_sink.send_sms(case, cpr, first_name, "en", "NemSMS-status ændret fra ikke-tilmeldt til tilmeldt")
+        action_sink.send_sms(case, cpr, first_name, language="da", reason="NemSMS-status ændret fra ikke-tilmeldt til tilmeldt")
+        action_sink.send_sms(case, cpr, first_name, language="en", reason="NemSMS-status ændret fra ikke-tilmeldt til tilmeldt")
         sms_sent = 2
         orchestrator_connection.log_info(f"SMS action registered for {first_name} due to NemSMS status change.")
 

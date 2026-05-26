@@ -34,7 +34,7 @@ class RealActionsSink:
             raise RuntimeError("RealActionsSink requires NovaAccess for baseline establishment")
         nova_functions.add_reminder_note(case_uuid, step, self._nova)
 
-    def send_sms(self, case: dict, cpr: str, _first_name: str, language: str, reason: str = "") -> None:
+    def send_sms(self, case: dict, cpr: str, _first_name: str, *, language: str, reason: str = "") -> None:
         """Send an SMS via Serviceplatformen and add a Nova note documenting it."""
         if self._kombit is None:
             raise RuntimeError("RealActionsSink requires KombitAccess to send SMS")
@@ -97,7 +97,7 @@ class DryRunSink:
         if self.verbose:
             print(f"  → {msg}", flush=True)
 
-    def send_sms(self, case: dict, cpr: str, first_name: str, language: str, reason: str = ""):
+    def send_sms(self, case: dict, cpr: str, first_name: str, *, language: str, reason: str = ""):
         """Record an SMS that would be sent."""
         case_number = case["caseAttributes"]["userFriendlyCaseNumber"]
         self.sms_actions.append({

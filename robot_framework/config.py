@@ -59,12 +59,10 @@ NOTE_PREFIX = "Rykker Step "
 DRY_RUN_STATE_FILE: str | None = None
 
 CASEWORKER = Caseworker(
-    name='Rpabruger Rpa94 - MÅ IKKE SLETTES RITM0',
-    ident='AZRPA94',
+    name='AZRPA78 - Rpabruger Rpa78 - MÅ IKKE SLETTES RITM0283472',
+    ident='AZRPA78',
     uuid='a577c0a2-a131-43a5-b4e6-b4f5bb75028f',
     type='group'
 )
 
 PATH_TO_LIBREOFFICE = "C:/Program Files/LibreOffice/program/soffice.exe"
-
-CASE_BATCH = 100

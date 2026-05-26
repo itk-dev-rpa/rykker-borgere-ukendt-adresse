@@ -48,12 +48,12 @@ def get_step(notes: list[JournalNote]) -> tuple[int, JournalNote]:
 def mask_cpr(cpr: str) -> str:
     """Mask a CPR number for log output.
 
-    Hides the date-of-birth (first 6 digits) and shows only the last 4 digits,
-    e.g. "0101011234" -> "******-1234".
+    Hides the last four digits and only show date-of-birth (first 6 digits),
+    e.g. "0101011234" -> 010101-****
     """
     if not cpr or len(cpr) < 4:
         return "***********"
-    return f"******-{cpr[-4:]}"
+    return f"{cpr[:6]}-****"
 
 
 def encrypt_cpr(cpr: str, first_name: str) -> str:
@@ -71,7 +71,7 @@ def encrypt_cpr(cpr: str, first_name: str) -> str:
     return hash_obj.hexdigest()
 
 
-def get_queue_element(  # pylint: disable=too-many-positional-arguments
+def get_queue_element(
         orchestrator_connection: OrchestratorConnection, queue_name: str, reference: str) -> dict | None:
     """Get a queue element by reference.
 
@@ -89,7 +89,7 @@ def get_queue_element(  # pylint: disable=too-many-positional-arguments
     return json.loads(queue_elements[0].data) if queue_elements[0].data else None
 
 
-def update_queue_element(  # pylint: disable=too-many-positional-arguments
+def update_queue_element(
         orchestrator_connection: OrchestratorConnection, queue_name: str, reference: str,
         digital_post: bool, nemsms: bool, case_uuid: str):
     """Update or create a queue element with registration status.
@@ -104,8 +104,8 @@ def update_queue_element(  # pylint: disable=too-many-positional-arguments
     """
     # Delete existing element if it exists
     queue_elements = orchestrator_connection.get_queue_elements(queue_name, reference)
-    if len(queue_elements) > 0:
-        orchestrator_connection.delete_queue_element(reference)
+    for queue_element in queue_elements:
+        orchestrator_connection.delete_queue_element(queue_element.id)
 
     # Create new element with updated data
     data = {

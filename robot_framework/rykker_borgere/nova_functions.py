@@ -11,62 +11,6 @@ from itk_dev_shared_components.kmd_nova.nova_objects import Caseworker, Document
 from robot_framework import config
 
 
-def get_cases(nova_access: NovaAccess):
-    """Get all cases from Nova."""
-    payload = {
-        "common": {
-            "transactionId": str(uuid.uuid4())
-        },
-        "caseworker": _build_caseworker_payload(config.CASEWORKER),
-        "states": {
-            "states": [
-                {
-                    "progressState": "Opstaaet"
-                },
-            ]
-        },
-        "caseGetOutput": {
-            "caseAttributes": {
-                "userFriendlyCaseNumber": True,
-                "title": True,
-                "caseDate": True,
-            },
-            "caseParty": {
-                "identificationType": True,
-                "identification": True,
-                "participantRole": True,
-                "name": True,
-                "index": True
-            },
-            "state": {
-                "progressState": True,
-                "activeCode": True,
-            },
-            "numberOfDocuments": True,
-            "numberOfJournalNotes": True
-        },
-    }
-    params = {"api-version": "2.0-Case"}
-    headers = {'Content-Type': 'application/json', 'Authorization': f"Bearer {nova_access.get_bearer_token()}"}
-
-    cases = []
-    more_cases = True
-    url = urllib.parse.urljoin(nova_access.domain, "api/Case/GetList")
-    start_row = 1
-    while more_cases:
-        paging = {
-                "startRow": start_row,
-                "numberOfRows": config.CASE_BATCH
-        }
-        payload["paging"] = paging
-        response = requests.put(url, params=params, headers=headers, json=payload, timeout=60)
-        response.raise_for_status()
-        more_cases = response.json()["pagingInformation"]['hasMoreRows']
-        cases.extend(response.json()["cases"])
-        start_row += config.CASE_BATCH
-    return cases
-
-
 def upload_document(nova_access: NovaAccess, document_path: str, document_title: str, case_id: str):
     """Upload a document to Nova and attach it to a case."""
     with open(document_path, 'rb') as file:

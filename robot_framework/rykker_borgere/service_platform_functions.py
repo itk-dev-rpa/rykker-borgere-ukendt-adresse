@@ -47,7 +47,7 @@ def send_digital_post(kombit_access: KombitAccess, file_path: str, recipient_cpr
     file_path = Path(file_path)
     with open(file_path, "rb") as file:
         file_content = base64.b64encode(file.read()).decode("utf-8")
-        send_file = message.File(encodingFormat="UTF-8", filename=str(file_path.name), language="DA-dk", content=file_content)
+        send_file = message.File(encodingFormat="UTF-8", filename=str(file_path.name), language="da", content=file_content)
         msg = message.create_digital_post_with_main_document("Rykker for adresseændring", sender, recipient, (send_file,))
         digital_post.send_message("Digital Post", msg, kombit_access)
     return True

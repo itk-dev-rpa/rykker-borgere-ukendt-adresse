@@ -4,7 +4,7 @@ Covers helpers that the flow tests in `test_process.py` mock out:
 - `util.fill_template` — DOCX rendering against the real templates.
 - `util.get_step` — note step parsing.
 - `util.mask_cpr` — CPR masking for log output.
-- `nova_functions.get_cases` / `get_notes` — pagination behavior.
+- `nova_functions.get_notes` — pagination behavior.
 - `nova_functions.update_case` — PATCH payload construction.
 - `nova_functions._build_caseworker_payload` — caseworker payload shape.
 - `service_platform_functions.send_digital_post` — registration short-circuit and happy path.
@@ -106,51 +106,10 @@ def test_get_step_ignores_non_rykker_notes():
 # ---------------------------------------------------------------------------
 
 def test_mask_cpr():
-    """`mask_cpr` masks date-of-birth and shows only last 4 digits."""
-    assert util.mask_cpr("0101011234") == "******-1234"
+    """`mask_cpr` shows date-of-birth and masks the last 4 digits."""
+    assert util.mask_cpr("0101011234") == "010101-****"
     assert util.mask_cpr("") == "***********"
     assert util.mask_cpr("123") == "***********"
-
-
-# ---------------------------------------------------------------------------
-# nova_functions.get_cases
-# ---------------------------------------------------------------------------
-
-@patch("robot_framework.rykker_borgere.nova_functions.requests.put")
-def test_get_cases_single_batch(mock_put):
-    """`get_cases` issues exactly one request when the first response has hasMoreRows=False."""
-    response = Mock()
-    response.json.return_value = {
-        "pagingInformation": {"hasMoreRows": False},
-        "cases": [{"caseId": "case1"}, {"caseId": "case2"}],
-    }
-    mock_put.return_value = response
-
-    cases = nova_functions.get_cases(_nova_access())
-
-    assert len(cases) == 2
-    assert mock_put.call_count == 1
-
-
-@patch("robot_framework.rykker_borgere.nova_functions.requests.put")
-def test_get_cases_paginates_until_no_more_rows(mock_put):
-    """`get_cases` follows pagination until hasMoreRows is False."""
-    first = Mock()
-    first.json.return_value = {
-        "pagingInformation": {"hasMoreRows": True},
-        "cases": [{"caseId": f"case{i}"} for i in range(500)],
-    }
-    second = Mock()
-    second.json.return_value = {
-        "pagingInformation": {"hasMoreRows": False},
-        "cases": [{"caseId": f"case{i}"} for i in range(500, 750)],
-    }
-    mock_put.side_effect = [first, second]
-
-    cases = nova_functions.get_cases(_nova_access())
-
-    assert len(cases) == 750
-    assert mock_put.call_count == 2
 
 
 # ---------------------------------------------------------------------------
