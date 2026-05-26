@@ -89,7 +89,7 @@ def get_queue_element(
     return json.loads(queue_elements[0].data) if queue_elements[0].data else None
 
 
-def update_queue_element(
+def update_queue_element(  # pylint: disable=too-many-positional-arguments
         orchestrator_connection: OrchestratorConnection, queue_name: str, reference: str,
         digital_post: bool, nemsms: bool, case_uuid: str):
     """Update or create a queue element with registration status.
