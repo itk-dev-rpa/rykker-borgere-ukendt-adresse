@@ -12,16 +12,25 @@ readme = "README.md"
 requires-python = ">=3.11"
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: Microsoft :: Windows",
 ]
+license = "MIT"
 dependencies = [
-    "OpenOrchestrator == 1.*",
+    "OpenOrchestrator == 2.*",
     "Pillow == 10.*",
+    "itk-dev-shared-components == 2.*",
+    "python-serviceplatformen==3.*",
+    "hvac == 2.*",
+    "itk_dev_event_log == 1.*",
+    "python-docx==1.*",
+    "docxtpl >= 0.2",
+    "pytest>=9.0.1",
+    "python-dotenv>=1.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-  "pylint",
-  "flake8"
+    "pylint",
+    "flake8",
+    "pytest"
 ]

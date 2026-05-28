@@ -157,6 +157,16 @@ cython_debug/
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
-#.idea/
 
+.idea/
 .vscode/
+uv.lock
+test/
+robot_framework/tmp/*
+~$*
+
+*.pem
+
+# Local dry-run simulation files
+robot_framework/dry_run_state.json
+*.local.json
