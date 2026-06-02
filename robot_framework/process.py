@@ -146,13 +146,14 @@ def handle_citizen(*, citizen: dict, nova_access: NovaAccess, kombit_access: Kom
     cases = nova_functions.get_cases_by_kle_and_cpr(nova_access, config.KLE_NUMBER, cpr)
     if not cases:
         orchestrator_connection.log_trace(f"No case found for {first_name} (CPR: {masked})")
+        #  TODO: Kan vi sende en mail til Backoffice hvis der ikke er en sag på en forventet borger? kontroladresse@mkb.aarhus.dk
         return 0, 0
 
     case = cases[0]
     case_uuid = case["common"]["uuid"]
 
     try:
-        digital_post_registered, nemsms_registered = service_platform_functions.check_registration_status(cpr, kombit_access)
+        digital_post_registered, nemsms_registered = service_platform_functions.check_registration_status(cpr, kombit_access)  # TODO: går vi videre her?
     except HTTPError as e:
         orchestrator_connection.log_error(f"Failed to check registration status for {first_name}: {e.response.text}")
         return 0, 0
@@ -173,7 +174,7 @@ def handle_citizen(*, citizen: dict, nova_access: NovaAccess, kombit_access: Kom
         orchestrator_connection=orchestrator_connection,
         is_dry=is_dry,
     )
-
+    #  TODO: If step sent er +24, notify backoffice.
     baseline_dt = datetime.fromisoformat(baseline_date)
     time_until_next = timedelta(days=interval_days) - (datetime.now() - baseline_dt)
     sending_rykker_soon = time_until_next <= timedelta(days=config.SUPPRESS_SMS_WINDOW_DAYS)
@@ -238,7 +239,7 @@ def handle_case(*, case: dict, orchestrator_connection: OrchestratorConnection,
         return 0
 
     try:
-        action_sink.send_reminder(case, cpr, case_party.name, next_step)
+        action_sink.send_reminder(case, cpr, case_party.name, next_step)  # Check om vi kan gemme usendt genererede breve, eller om vi ikke kommer så langt her
         itk_dev_event_log.emit(orchestrator_connection.process_name, f"Rykker {next_step} sendt")
         orchestrator_connection.log_info(f"Registered reminder {next_step} for case {case_number}")
         return 1

@@ -1,4 +1,5 @@
 """Functions for interacting with Nova."""
+import re
 import urllib
 import uuid
 from typing import Literal, Any
@@ -117,14 +118,18 @@ def get_cases_by_kle_and_cpr(nova_access: NovaAccess, kle_number: str, cpr: str)
     return response.json().get("cases", [])
 
 
-def add_reminder_note(case_uuid: str, reminder_number: int, nova_access: NovaAccess, caseworker: Caseworker = None) -> str:
-    """Add a journal note to a case documenting that a reminder letter has been sent.
+def add_reminder_note(case_uuid: str, reminder_number: int, nova_access: NovaAccess,
+                      caseworker: Caseworker = None, sent: bool = True) -> str:
+    """Add a journal note to a case documenting a reminder letter.
 
     Args:
         case_uuid: The uuid of the case to add the note to.
         reminder_number: Which reminder this is (1, 2, 3, etc.).
         nova_access: The NovaAccess object used to authenticate.
         caseworker: The caseworker to attribute the note to. Defaults to config.CASEWORKER.
+        sent: True if the letter was delivered via digital post; False if delivery was
+              skipped because the citizen is not registered. When False, the note title is
+              prefixed with "Ikke sendt: " and the body asks for manual follow-up.
 
     Returns:
         The uuid of the created journal note.
@@ -132,8 +137,15 @@ def add_reminder_note(case_uuid: str, reminder_number: int, nova_access: NovaAcc
     if caseworker is None:
         caseworker = config.CASEWORKER
 
-    note_title = f"Rykker {reminder_number} sendt"
-    note_text = f"Rykker {reminder_number} er blevet sendt til borgeren vedrørende ukendt adresse."
+    if sent:
+        note_title = f"Rykker {reminder_number} sendt"
+        note_text = f"Rykker {reminder_number} er blevet sendt til borgeren vedrørende ukendt adresse."
+    else:
+        note_title = f"Ikke sendt: Rykker {reminder_number} sendt"
+        note_text = (
+            f"Rykker {reminder_number} blev IKKE sendt via digital post, da borgeren ikke er tilmeldt. "
+            "Brevet er uploadet til sagen. Manuel opfølgning påkrævet."
+        )
 
     return nova_notes.add_text_note(case_uuid, note_title, note_text, caseworker, approved=False, nova_access=nova_access)
 
@@ -182,20 +194,15 @@ def get_latest_reminder_info(case_uuid: str, nova_access: NovaAccess) -> tuple[i
     latest_date = None
 
     for note in notes:
-        # Look for notes with title pattern "Rykker X sendt"
-        if note.title and note.title.startswith("Rykker ") and note.title.endswith(" sendt"):
-            try:
-                # Extract the step number from the title
-                step_str = note.title.replace("Rykker ", "").replace(" sendt", "")
-                step = int(step_str)
-
-                # Keep track of the highest step number found
-                if step > latest_step:
-                    latest_step = step
-                    latest_date = note.journal_date
-            except ValueError:
-                # Skip notes that don't match the expected format
-                continue
+        # Match both "Rykker X sendt" and "Ikke sendt: Rykker X sendt" — sidstnævnte tilføjes
+        # når brevet ikke kunne leveres via digital post, men step-tælleren skal stadig rykke frem.
+        match = re.match(r"^(?:Ikke sendt: )?Rykker (\d+) sendt$", note.title or "")
+        if not match:
+            continue
+        step = int(match.group(1))
+        if step > latest_step:
+            latest_step = step
+            latest_date = note.journal_date
 
     return (latest_step, latest_date)
 

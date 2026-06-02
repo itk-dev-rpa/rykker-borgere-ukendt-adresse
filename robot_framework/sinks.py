@@ -69,13 +69,13 @@ class RealActionsSink:
         case_uuid = case["common"]["uuid"]
         case_number = case["caseAttributes"]["userFriendlyCaseNumber"]
         template_to_use = f"rykker_borgere/templates/Rykker {step} - Ukendt adresse.docx"
-        letter_name = f"Rykker {step} - Adresse.docx"
+        letter_name = f"{first_name}, din adresse er ukendt.docx"
         deadline_date = datetime.now() + timedelta(days=config.LETTER_DEADLINE_DAYS)
         letter_path = util.fill_template(template_to_use, f"tmp/{letter_name}", first_name, deadline_date, case_number)
         pdf_path = util.convert_docx_to_pdf(letter_path, "tmp/")
         nova_functions.upload_document(self._nova, str(pdf_path), letter_name, case_uuid)
-        service_platform_functions.send_digital_post(self._kombit, str(pdf_path), cpr)
-        nova_functions.add_reminder_note(case_uuid, step, self._nova)
+        service_platform_functions.send_digital_post(self._kombit, str(pdf_path), cpr)  # TODO: Make sure we send SMS explaining you got mail from Aarhus
+        nova_functions.add_reminder_note(case_uuid, step, self._nova)  # TODO: Skal markere brevet som ikke sendt i overskrift (Ikke sendt: Rykker 1), og sende selvom der ikke er tilmeldt digital post
 
 
 class DryRunSink:
