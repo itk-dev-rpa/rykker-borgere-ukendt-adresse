@@ -18,10 +18,10 @@ from robot_framework.sinks import DryRunSink, RealActionsSink
 
 @dataclass
 class BackofficeAlerts:
-    """Aggregator for borgere der kræver manuel opmærksomhed efter en robotkørsel.
+    """Aggregates citizens that require manual backoffice attention during a run.
 
-    Indholdet samles undervejs i loopet og sendes som én samlet mail i slutningen
-    af process(). I dry-run vises listerne i print_report i stedet for at sende mail.
+    Entries are appended throughout the loop and a single summary email is sent at the
+    end of process(). In dry-run mode the lists are rendered in print_report instead.
     """
     no_case: list[dict] = field(default_factory=list)      # {"fornavn", "cpr_masked"}
     high_step: list[dict] = field(default_factory=list)    # {"case_number", "fornavn", "cpr_masked", "step"}
@@ -94,11 +94,11 @@ def process(orchestrator_connection: OrchestratorConnection, action_sink: DryRun
             try:
                 _send_backoffice_alert_mail(alerts)
                 orchestrator_connection.log_info(
-                    f"Backoffice-mail sendt til {config.BACKOFFICE_RECIPIENT} "
-                    f"(ingen sag: {len(alerts.no_case)}, høj step: {len(alerts.high_step)})"
+                    f"Backoffice alert mail sent to {config.BACKOFFICE_RECIPIENT} "
+                    f"(no_case: {len(alerts.no_case)}, high_step: {len(alerts.high_step)})"
                 )
             except Exception as e:  # pylint: disable=broad-exception-caught
-                orchestrator_connection.log_error(f"Kunne ikke sende backoffice-mail: {str(e)}")
+                orchestrator_connection.log_error(f"Failed to send backoffice alert mail: {str(e)}")
 
 
 def _format_backoffice_body(alerts: BackofficeAlerts) -> str:
@@ -228,8 +228,9 @@ def handle_citizen(*, citizen: dict, nova_access: NovaAccess, kombit_access: Kom
     try:
         digital_post_registered, nemsms_registered = service_platform_functions.check_registration_status(cpr, kombit_access)
     except HTTPError as e:
-        # check_registration_status har internt retried op til config.REGISTRATION_CHECK_RETRIES
-        # gange. Hvis vi ender her, er fejlen vedvarende — skip borger, prøv igen næste mandag.
+        # check_registration_status has already retried internally up to
+        # config.REGISTRATION_CHECK_RETRIES times. Reaching here means the failure is
+        # persistent — skip the citizen and try again on the next Monday run.
         orchestrator_connection.log_error(f"Failed to check registration status for {first_name}: {e.response.text}")
         return 0, 0
 
@@ -303,8 +304,8 @@ def handle_case(*, case: dict, orchestrator_connection: OrchestratorConnection,
             confirmation SMS after successful digital post delivery.
 
     Returns:
-        Number of reminders sent (0 or 1). En "Ikke sendt: Rykker X"-note tæller også
-        som 1, fordi step-tælleren rykker frem (se RealActionsSink.send_reminder).
+        Number of reminders sent (0 or 1). An "Ikke sendt: Rykker X" note also counts
+        as 1, because the step counter still advances (see RealActionsSink.send_reminder).
     """
     case_number = case["caseAttributes"]["userFriendlyCaseNumber"]
 

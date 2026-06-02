@@ -194,8 +194,9 @@ def get_latest_reminder_info(case_uuid: str, nova_access: NovaAccess) -> tuple[i
     latest_date = None
 
     for note in notes:
-        # Match both "Rykker X sendt" and "Ikke sendt: Rykker X sendt" — sidstnævnte tilføjes
-        # når brevet ikke kunne leveres via digital post, men step-tælleren skal stadig rykke frem.
+        # Match both "Rykker X sendt" and "Ikke sendt: Rykker X sendt" — the latter is
+        # added when the letter could not be delivered via digital post, but the step
+        # counter must still advance so we don't retry the same reminder every run.
         match = re.match(r"^(?:Ikke sendt: )?Rykker (\d+) sendt$", note.title or "")
         if not match:
             continue

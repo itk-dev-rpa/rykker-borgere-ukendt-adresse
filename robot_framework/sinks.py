@@ -65,10 +65,11 @@ class RealActionsSink:
                       nemsms_registered: bool = False) -> None:
         """Send reminder letter and add Nova note in production.
 
-        Brevet uploades altid til Nova så sagsbehandler har det tilgængeligt — uanset om
-        digital post-leveringen lykkes. Hvis borgeren ikke er tilmeldt digital post,
-        markeres journalnotatet "Ikke sendt: Rykker X sendt" og step-tælleren rykker
-        alligevel frem (så robotten ikke prøver samme rykker hver mandag).
+        The letter is always uploaded to Nova so the caseworker has access to it,
+        regardless of whether digital post delivery succeeds. If the citizen is not
+        registered for digital post, the journal note is titled "Ikke sendt: Rykker X
+        sendt" and the step counter still advances (so the robot does not retry the
+        same reminder every Monday indefinitely).
         """
         if self._nova is None or self._kombit is None:
             raise RuntimeError("RealActionsSink requires NovaAccess and KombitAccess to send reminders")
@@ -90,7 +91,7 @@ class RealActionsSink:
                 try:
                     service_platform_functions.send_sms(self._kombit, cpr, lang)
                 except Exception as e:  # pylint: disable=broad-exception-caught
-                    # Brevet er leveret — SMS er bonus. Log og fortsæt.
+                    # Letter is already delivered — SMS is a bonus. Log and continue.
                     if self._orc is not None:
                         self._orc.log_error(
                             f"NemSMS-notifikation om Rykker {step} for sag {case_number} fejlede ({lang}): {str(e)}"
@@ -116,10 +117,11 @@ class DryRunSink:
         mock_state = mock_state or {}
         self.mock_queue_state = mock_state.get("queue", {})
         self.mock_nova_reminders = mock_state.get("nova_reminders", {})
-        # Tillader test af "ikke tilmeldt digital post"-grenen uden faktisk Serviceplatformen-kald.
-        # Default True hvis ikke specificeret per CPR — bevarer eksisterende test-adfærd.
+        # Lets tests exercise the "not registered for digital post" branch without
+        # hitting the Service Platform. Defaults to True when a CPR is not specified,
+        # which preserves the existing test behavior.
         self.mock_digital_post_registered = mock_state.get("digital_post_registered", {})
-        # Sættes af process() inden print_report kaldes. Indeholder en BackofficeAlerts-instans.
+        # Assigned by process() before print_report is called. Holds a BackofficeAlerts.
         self.backoffice_alerts = None
 
     def _say(self, msg: str) -> None:
@@ -141,9 +143,10 @@ class DryRunSink:
                       nemsms_registered: bool = False):
         """Record a reminder that would be sent.
 
-        Simulerer leveringsudfaldet via `mock_digital_post_registered[cpr]` (default True).
-        Hvis True: et NemSMS-action per sprog registreres oveni hvis nemsms_registered.
-        Hvis False: ingen NemSMS (brevet kunne ikke leveres).
+        Simulates the delivery outcome via `mock_digital_post_registered[cpr]`
+        (defaults to True). When True, one NemSMS action per language is also
+        recorded if `nemsms_registered`. When False, no NemSMS is recorded — the
+        letter could not be delivered.
         """
         case_number = case["caseAttributes"]["userFriendlyCaseNumber"]
         delivered = self.mock_digital_post_registered.get(cpr, True)
