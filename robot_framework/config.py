@@ -44,6 +44,10 @@ REMINDER_FOLLOWUP_INTERVAL_DAYS = 30  # Between subsequent reminders
 SUPPRESS_SMS_WINDOW_DAYS = 7          # Suppress NemSMS-change SMS within N days of next reminder
 LETTER_DEADLINE_DAYS = 30             # Deadline written into the reminder letter
 
+# Retry-strategi for transiente Serviceplatformen-fejl ved check_registration_status.
+# Total forsøg = 1 + REGISTRATION_CHECK_RETRIES. Backoff er eksponentiel (1s, 3s).
+REGISTRATION_CHECK_RETRIES = 2
+
 KEYVAULT_CREDENTIALS = "Keyvault"
 KEYVAULT_URI = "Keyvault URI"
 KEYVAULT_PATH = "Digital_Post_Ukendt_Adresse"

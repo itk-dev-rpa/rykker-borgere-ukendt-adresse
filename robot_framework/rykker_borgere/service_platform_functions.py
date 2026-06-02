@@ -1,5 +1,6 @@
 """Functions for communicating with the Service Platform."""
 import base64
+import time
 from pathlib import Path
 
 from hvac import Client
@@ -7,6 +8,7 @@ from python_serviceplatformen.authentication import KombitAccess
 from python_serviceplatformen import digital_post
 from python_serviceplatformen.models import message
 from OpenOrchestrator.orchestrator_connection.connection import OrchestratorConnection
+from requests.exceptions import HTTPError, ConnectionError as RequestsConnectionError, Timeout
 
 from robot_framework import config
 
@@ -86,14 +88,40 @@ def send_sms(kombit_access: KombitAccess, recipient_cpr: str, language: str = "d
 def check_registration_status(cpr: str, kombit_access: KombitAccess) -> tuple[bool, bool]:
     """Check Digital Post and NemSMS registration status for a citizen.
 
+    Retries transient errors (5xx, ConnectionError, Timeout) up to
+    `config.REGISTRATION_CHECK_RETRIES` times with exponential backoff (1s, 3s).
+    4xx errors are NOT retried — they indicate auth/validation problems that won't
+    resolve by waiting, so the HTTPError is re-raised immediately.
+
     Args:
         cpr: CPR number of the citizen.
         kombit_access: KombitAccess object for authentication.
 
     Returns:
         A tuple of (digital_post_registered, nemsms_registered).
-    """
-    digital_post_registered = digital_post.is_registered(cpr, "digitalpost", kombit_access)
-    nemsms_registered = digital_post.is_registered(cpr, "nemsms", kombit_access)
 
-    return (digital_post_registered, nemsms_registered)
+    Raises:
+        HTTPError: 4xx response, or persistent failure after retries are exhausted.
+        RequestsConnectionError, Timeout: persistent network failure after retries.
+    """
+    backoffs = [1, 3]  # seconds between attempts 1→2 and 2→3
+    attempts = 1 + config.REGISTRATION_CHECK_RETRIES
+
+    for attempt_index in range(attempts):
+        try:
+            digital_post_registered = digital_post.is_registered(cpr, "digitalpost", kombit_access)
+            nemsms_registered = digital_post.is_registered(cpr, "nemsms", kombit_access)
+            return (digital_post_registered, nemsms_registered)
+        except HTTPError as e:
+            status = e.response.status_code if e.response is not None else None
+            if status is not None and 400 <= status < 500:
+                raise  # client-side error: don't retry
+            if attempt_index == attempts - 1:
+                raise
+        except (RequestsConnectionError, Timeout):
+            if attempt_index == attempts - 1:
+                raise
+        time.sleep(backoffs[attempt_index])
+
+    # Unreachable — loop always returns or raises.
+    raise RuntimeError("check_registration_status retry loop exited unexpectedly")

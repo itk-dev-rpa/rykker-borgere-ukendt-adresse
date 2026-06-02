@@ -153,8 +153,10 @@ def handle_citizen(*, citizen: dict, nova_access: NovaAccess, kombit_access: Kom
     case_uuid = case["common"]["uuid"]
 
     try:
-        digital_post_registered, nemsms_registered = service_platform_functions.check_registration_status(cpr, kombit_access)  # TODO: går vi videre her?
+        digital_post_registered, nemsms_registered = service_platform_functions.check_registration_status(cpr, kombit_access)
     except HTTPError as e:
+        # check_registration_status har internt retried op til config.REGISTRATION_CHECK_RETRIES
+        # gange. Hvis vi ender her, er fejlen vedvarende — skip borger, prøv igen næste mandag.
         orchestrator_connection.log_error(f"Failed to check registration status for {first_name}: {e.response.text}")
         return 0, 0
 
