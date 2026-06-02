@@ -198,6 +198,7 @@ def handle_citizen(*, citizen: dict, nova_access: NovaAccess, kombit_access: Kom
         step_sent=step_sent,
         baseline_date=baseline_date,
         action_sink=action_sink,
+        nemsms_registered=nemsms_registered,
     )
 
     return sms_sent, reminder_sent
@@ -205,7 +206,8 @@ def handle_citizen(*, citizen: dict, nova_access: NovaAccess, kombit_access: Kom
 
 def handle_case(*, case: dict, orchestrator_connection: OrchestratorConnection,
                 step_sent: int, baseline_date: str,
-                action_sink: DryRunSink | RealActionsSink) -> int:
+                action_sink: DryRunSink | RealActionsSink,
+                nemsms_registered: bool = False) -> int:
     """Handle reminder sending for a single case.
 
     Args:
@@ -214,9 +216,12 @@ def handle_case(*, case: dict, orchestrator_connection: OrchestratorConnection,
         step_sent: Number of reminder steps already sent.
         baseline_date: ISO date that is the baseline for the waiting window.
         action_sink: Sink used for side-effects (real or dry-run).
+        nemsms_registered: True if the citizen is NemSMS-subscribed. Used to trigger a
+            confirmation SMS after successful digital post delivery.
 
     Returns:
-        Number of reminders sent (0 or 1).
+        Number of reminders sent (0 or 1). En "Ikke sendt: Rykker X"-note tæller også
+        som 1, fordi step-tælleren rykker frem (se RealActionsSink.send_reminder).
     """
     case_number = case["caseAttributes"]["userFriendlyCaseNumber"]
 
@@ -239,7 +244,10 @@ def handle_case(*, case: dict, orchestrator_connection: OrchestratorConnection,
         return 0
 
     try:
-        action_sink.send_reminder(case, cpr, case_party.name, next_step)  # Check om vi kan gemme usendt genererede breve, eller om vi ikke kommer så langt her
+        action_sink.send_reminder(
+            case, cpr, case_party.name, next_step,
+            nemsms_registered=nemsms_registered,
+        )
         itk_dev_event_log.emit(orchestrator_connection.process_name, f"Rykker {next_step} sendt")
         orchestrator_connection.log_info(f"Registered reminder {next_step} for case {case_number}")
         return 1

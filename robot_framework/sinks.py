@@ -61,8 +61,15 @@ class RealActionsSink:
             approved=False, nova_access=self._nova,
         )
 
-    def send_reminder(self, case: dict, cpr: str, first_name: str, step: int) -> None:
-        """Send reminder letter and add Nova note in production."""
+    def send_reminder(self, case: dict, cpr: str, first_name: str, step: int, *,
+                      nemsms_registered: bool = False) -> None:
+        """Send reminder letter and add Nova note in production.
+
+        Brevet uploades altid til Nova så sagsbehandler har det tilgængeligt — uanset om
+        digital post-leveringen lykkes. Hvis borgeren ikke er tilmeldt digital post,
+        markeres journalnotatet "Ikke sendt: Rykker X sendt" og step-tælleren rykker
+        alligevel frem (så robotten ikke prøver samme rykker hver mandag).
+        """
         if self._nova is None or self._kombit is None:
             raise RuntimeError("RealActionsSink requires NovaAccess and KombitAccess to send reminders")
 
@@ -74,8 +81,25 @@ class RealActionsSink:
         letter_path = util.fill_template(template_to_use, f"tmp/{letter_name}", first_name, deadline_date, case_number)
         pdf_path = util.convert_docx_to_pdf(letter_path, "tmp/")
         nova_functions.upload_document(self._nova, str(pdf_path), letter_name, case_uuid)
-        service_platform_functions.send_digital_post(self._kombit, str(pdf_path), cpr)  # TODO: Make sure we send SMS explaining you got mail from Aarhus
-        nova_functions.add_reminder_note(case_uuid, step, self._nova)  # TODO: Skal markere brevet som ikke sendt i overskrift (Ikke sendt: Rykker 1), og sende selvom der ikke er tilmeldt digital post
+
+        delivered = service_platform_functions.send_digital_post(self._kombit, str(pdf_path), cpr)
+        nova_functions.add_reminder_note(case_uuid, step, self._nova, sent=delivered)
+
+        if delivered and nemsms_registered:
+            for lang in ("da", "en"):
+                try:
+                    service_platform_functions.send_sms(self._kombit, cpr, lang)
+                except Exception as e:  # pylint: disable=broad-exception-caught
+                    # Brevet er leveret — SMS er bonus. Log og fortsæt.
+                    if self._orc is not None:
+                        self._orc.log_error(
+                            f"NemSMS-notifikation om Rykker {step} for sag {case_number} fejlede ({lang}): {str(e)}"
+                        )
+            nova_functions.add_sms_note(
+                case_uuid=case_uuid,
+                nova_access=self._nova,
+                reason=f"Notifikation om at Rykker {step} er leveret via digital post",
+            )
 
 
 class DryRunSink:
@@ -92,6 +116,9 @@ class DryRunSink:
         mock_state = mock_state or {}
         self.mock_queue_state = mock_state.get("queue", {})
         self.mock_nova_reminders = mock_state.get("nova_reminders", {})
+        # Tillader test af "ikke tilmeldt digital post"-grenen uden faktisk Serviceplatformen-kald.
+        # Default True hvis ikke specificeret per CPR — bevarer eksisterende test-adfærd.
+        self.mock_digital_post_registered = mock_state.get("digital_post_registered", {})
 
     def _say(self, msg: str) -> None:
         if self.verbose:
@@ -108,16 +135,35 @@ class DryRunSink:
         })
         self._say(f"[sag {case_number}] SMS ({language}) → {first_name} ({util.mask_cpr(cpr)}) — {reason}")
 
-    def send_reminder(self, case: dict, cpr: str, first_name: str, step: int):
-        """Record a reminder that would be sent."""
+    def send_reminder(self, case: dict, cpr: str, first_name: str, step: int, *,
+                      nemsms_registered: bool = False):
+        """Record a reminder that would be sent.
+
+        Simulerer leveringsudfaldet via `mock_digital_post_registered[cpr]` (default True).
+        Hvis True: et NemSMS-action per sprog registreres oveni hvis nemsms_registered.
+        Hvis False: ingen NemSMS (brevet kunne ikke leveres).
+        """
         case_number = case["caseAttributes"]["userFriendlyCaseNumber"]
+        delivered = self.mock_digital_post_registered.get(cpr, True)
         self.reminder_actions.append({
             "cpr": cpr,
             "first_name": first_name,
             "case_number": case_number,
             "step": step,
+            "delivered": delivered,
         })
-        self._say(f"[sag {case_number}] Rykker {step} → {first_name} ({util.mask_cpr(cpr)})")
+        status = "Rykker" if delivered else "Ikke sendt: Rykker"
+        self._say(f"[sag {case_number}] {status} {step} → {first_name} ({util.mask_cpr(cpr)})")
+
+        if delivered and nemsms_registered:
+            for lang in ("da", "en"):
+                self.sms_actions.append({
+                    "cpr": cpr,
+                    "first_name": first_name,
+                    "language": lang,
+                    "reason": f"Notifikation om at Rykker {step} er leveret via digital post",
+                })
+            self._say(f"  ↳ NemSMS-notifikation om brev (da+en) → {first_name}")
 
     def update_queue(self, encrypted_ref: str, digital_post: bool, nemsms: bool, case_uuid: str):
         """Record a queue update that would be performed."""
@@ -159,8 +205,9 @@ class DryRunSink:
         orchestrator_connection.log_info(f"\n📨 Rykkere der ville blive sendt: {len(self.reminder_actions)}")
         for action in self.reminder_actions:
             masked_cpr = util.mask_cpr(action['cpr'])
+            label = "Rykker" if action.get('delivered', True) else "Ikke sendt: Rykker"
             orchestrator_connection.log_info(
-                f"  - Sag {action['case_number']}: {action['first_name']} (CPR: {masked_cpr}) - Rykker {action['step']}"
+                f"  - Sag {action['case_number']}: {action['first_name']} (CPR: {masked_cpr}) - {label} {action['step']}"
             )
 
         orchestrator_connection.log_info(f"\n🔄 Queue opdateringer der ville blive udført: {len(self.queue_updates)}")
