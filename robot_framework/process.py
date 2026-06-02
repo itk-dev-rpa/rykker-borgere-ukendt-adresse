@@ -1,4 +1,5 @@
 """This module contains the main process of the robot."""
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 import pyodbc
@@ -7,11 +8,26 @@ from requests.exceptions import HTTPError
 from OpenOrchestrator.orchestrator_connection.connection import OrchestratorConnection
 from python_serviceplatformen.authentication import KombitAccess
 from itk_dev_shared_components.kmd_nova.authentication import NovaAccess
+from itk_dev_shared_components.smtp import smtp_util
 import itk_dev_event_log
 
 from robot_framework.rykker_borgere import nova_functions, service_platform_functions, util
 from robot_framework import config
 from robot_framework.sinks import DryRunSink, RealActionsSink
+
+
+@dataclass
+class BackofficeAlerts:
+    """Aggregator for borgere der kræver manuel opmærksomhed efter en robotkørsel.
+
+    Indholdet samles undervejs i loopet og sendes som én samlet mail i slutningen
+    af process(). I dry-run vises listerne i print_report i stedet for at sende mail.
+    """
+    no_case: list[dict] = field(default_factory=list)      # {"fornavn", "cpr_masked"}
+    high_step: list[dict] = field(default_factory=list)    # {"case_number", "fornavn", "cpr_masked", "step"}
+
+    def is_empty(self) -> bool:
+        return not self.no_case and not self.high_step
 
 
 def process(orchestrator_connection: OrchestratorConnection, action_sink: DryRunSink | None = None) -> None:
@@ -42,6 +58,7 @@ def process(orchestrator_connection: OrchestratorConnection, action_sink: DryRun
     reminders_sent_count = 0
     verbose = sink.verbose
     total = len(citizens_with_unknown_address)
+    alerts = BackofficeAlerts()
 
     for index, citizen in enumerate(citizens_with_unknown_address, start=1):
         if verbose:
@@ -56,6 +73,7 @@ def process(orchestrator_connection: OrchestratorConnection, action_sink: DryRun
                 kombit_access=kombit_access,
                 orchestrator_connection=orchestrator_connection,
                 action_sink=sink,
+                alerts=alerts,
             )
             sms_sent_count += sms_sent
             reminders_sent_count += reminder_sent
@@ -64,6 +82,7 @@ def process(orchestrator_connection: OrchestratorConnection, action_sink: DryRun
             continue
 
     if sink.is_dry_run:
+        sink.backoffice_alerts = alerts
         sink.print_report(orchestrator_connection)
     else:
         itk_dev_event_log.emit(orchestrator_connection.process_name, "SMS sent", sms_sent_count)
@@ -71,6 +90,56 @@ def process(orchestrator_connection: OrchestratorConnection, action_sink: DryRun
         orchestrator_connection.log_info(
             f"Process completed. SMS sent: {sms_sent_count}, Reminders sent: {reminders_sent_count}"
         )
+        if not alerts.is_empty():
+            try:
+                _send_backoffice_alert_mail(alerts)
+                orchestrator_connection.log_info(
+                    f"Backoffice-mail sendt til {config.BACKOFFICE_RECIPIENT} "
+                    f"(ingen sag: {len(alerts.no_case)}, høj step: {len(alerts.high_step)})"
+                )
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                orchestrator_connection.log_error(f"Kunne ikke sende backoffice-mail: {str(e)}")
+
+
+def _format_backoffice_body(alerts: BackofficeAlerts) -> str:
+    """Render the backoffice alerts as a plain-text email body. CPR is masked (GDPR)."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    lines = [f"Robotten 'Rykker borgere - ukendt adresse' har kørt {today}.", ""]
+
+    if alerts.no_case:
+        lines.append(f"INGEN SAG FUNDET ({len(alerts.no_case)} borgere):")
+        lines.append(f"  {'Fornavn':<20}  {'CPR':<15}")
+        for entry in alerts.no_case:
+            lines.append(f"  {entry['fornavn']:<20}  {entry['cpr_masked']:<15}")
+        lines.append("")
+
+    if alerts.high_step:
+        lines.append(
+            f"STEP ≥ {config.HIGH_STEP_THRESHOLD} — borger har modtaget mange rykkere "
+            f"({len(alerts.high_step)} borgere):"
+        )
+        lines.append(f"  {'Sagsnr':<14}  {'Fornavn':<20}  {'CPR':<15}  {'Step':>4}")
+        for entry in alerts.high_step:
+            lines.append(
+                f"  {entry['case_number']:<14}  {entry['fornavn']:<20}  "
+                f"{entry['cpr_masked']:<15}  {entry['step']:>4}"
+            )
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def _send_backoffice_alert_mail(alerts: BackofficeAlerts) -> None:
+    """Send the aggregated backoffice mail via the shared SMTP helper."""
+    smtp_util.send_email(
+        receiver=config.BACKOFFICE_RECIPIENT,
+        sender=config.SCREENSHOT_SENDER,
+        subject="Rykker-robot: borgere der kræver opmærksomhed",
+        body=_format_backoffice_body(alerts),
+        smtp_server=config.SMTP_SERVER,
+        smtp_port=config.SMTP_PORT,
+        html_body=False,
+    )
 
 
 def get_citizens_from_sql(db_connection: str) -> list[dict]:
@@ -125,7 +194,8 @@ def _resolve_baseline_state(*, case: dict, case_uuid: str, nova_access: NovaAcce
 
 def handle_citizen(*, citizen: dict, nova_access: NovaAccess, kombit_access: KombitAccess,
                    orchestrator_connection: OrchestratorConnection,
-                   action_sink: DryRunSink | RealActionsSink) -> tuple[int, int]:
+                   action_sink: DryRunSink | RealActionsSink,
+                   alerts: BackofficeAlerts | None = None) -> tuple[int, int]:
     """Handle a single citizen with unknown address.
 
     Args:
@@ -134,6 +204,8 @@ def handle_citizen(*, citizen: dict, nova_access: NovaAccess, kombit_access: Kom
         kombit_access: Kombit/Service Platform access.
         orchestrator_connection: Connection to OpenOrchestrator.
         action_sink: Sink used for side-effects (real or dry-run).
+        alerts: Aggregator that gets appended-to when backoffice attention is needed.
+            When None (typically in unit tests), aggregation is skipped silently.
 
     Returns:
         Tuple of (sms_sent_count, reminder_sent_count).
@@ -146,7 +218,8 @@ def handle_citizen(*, citizen: dict, nova_access: NovaAccess, kombit_access: Kom
     cases = nova_functions.get_cases_by_kle_and_cpr(nova_access, config.KLE_NUMBER, cpr)
     if not cases:
         orchestrator_connection.log_trace(f"No case found for {first_name} (CPR: {masked})")
-        #  TODO: Kan vi sende en mail til Backoffice hvis der ikke er en sag på en forventet borger? kontroladresse@mkb.aarhus.dk
+        if alerts is not None:
+            alerts.no_case.append({"fornavn": first_name, "cpr_masked": masked})
         return 0, 0
 
     case = cases[0]
@@ -176,7 +249,15 @@ def handle_citizen(*, citizen: dict, nova_access: NovaAccess, kombit_access: Kom
         orchestrator_connection=orchestrator_connection,
         is_dry=is_dry,
     )
-    #  TODO: If step sent er +24, notify backoffice.
+
+    if alerts is not None and step_sent >= config.HIGH_STEP_THRESHOLD:
+        alerts.high_step.append({
+            "case_number": case["caseAttributes"]["userFriendlyCaseNumber"],
+            "fornavn": first_name,
+            "cpr_masked": masked,
+            "step": step_sent,
+        })
+
     baseline_dt = datetime.fromisoformat(baseline_date)
     time_until_next = timedelta(days=interval_days) - (datetime.now() - baseline_dt)
     sending_rykker_soon = time_until_next <= timedelta(days=config.SUPPRESS_SMS_WINDOW_DAYS)

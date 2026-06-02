@@ -119,6 +119,8 @@ class DryRunSink:
         # Tillader test af "ikke tilmeldt digital post"-grenen uden faktisk Serviceplatformen-kald.
         # Default True hvis ikke specificeret per CPR — bevarer eksisterende test-adfærd.
         self.mock_digital_post_registered = mock_state.get("digital_post_registered", {})
+        # Sættes af process() inden print_report kaldes. Indeholder en BackofficeAlerts-instans.
+        self.backoffice_alerts = None
 
     def _say(self, msg: str) -> None:
         if self.verbose:
@@ -222,6 +224,21 @@ class DryRunSink:
                 f"  - {note['note_type']} (case {note['case_uuid']}): {note['details']}"
             )
 
+        no_case = self.backoffice_alerts.no_case if self.backoffice_alerts else []
+        high_step = self.backoffice_alerts.high_step if self.backoffice_alerts else []
+        backoffice_total = len(no_case) + len(high_step)
+        orchestrator_connection.log_info(
+            f"\n📧 Backoffice-mail ville blive sendt: {'JA' if backoffice_total else 'NEJ'} "
+            f"(ingen sag: {len(no_case)}, høj step: {len(high_step)})"
+        )
+        for entry in no_case:
+            orchestrator_connection.log_info(f"  - INGEN SAG: {entry['fornavn']} (CPR: {entry['cpr_masked']})")
+        for entry in high_step:
+            orchestrator_connection.log_info(
+                f"  - HØJ STEP: Sag {entry['case_number']} | {entry['fornavn']} "
+                f"(CPR: {entry['cpr_masked']}) | step {entry['step']}"
+            )
+
         orchestrator_connection.log_info("\n" + "=" * 80)
         orchestrator_connection.log_info("OPSUMMERING")
         orchestrator_connection.log_info("=" * 80)
@@ -229,4 +246,5 @@ class DryRunSink:
         orchestrator_connection.log_info(f"Ville have sendt {len(self.reminder_actions)} rykkere")
         orchestrator_connection.log_info(f"Ville have opdateret {len(self.queue_updates)} queue elementer")
         orchestrator_connection.log_info(f"Ville have tilføjet {len(self.nova_notes)} Nova notater")
+        orchestrator_connection.log_info(f"Ville have inkluderet {backoffice_total} borgere i backoffice-mail")
         orchestrator_connection.log_info("=" * 80)

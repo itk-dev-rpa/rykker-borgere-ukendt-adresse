@@ -48,6 +48,11 @@ LETTER_DEADLINE_DAYS = 30             # Deadline written into the reminder lette
 # Total forsøg = 1 + REGISTRATION_CHECK_RETRIES. Backoff er eksponentiel (1s, 3s).
 REGISTRATION_CHECK_RETRIES = 2
 
+# Backoffice-notifikationer: én samlet mail per robotkørsel hvis nogen borgere
+# matcher kriterierne (ingen sag fundet, eller step ≥ HIGH_STEP_THRESHOLD).
+BACKOFFICE_RECIPIENT = "kontroladresse@mkb.aarhus.dk"
+HIGH_STEP_THRESHOLD = 24
+
 KEYVAULT_CREDENTIALS = "Keyvault"
 KEYVAULT_URI = "Keyvault URI"
 KEYVAULT_PATH = "Digital_Post_Ukendt_Adresse"
