@@ -1,8 +1,8 @@
 """Unit tests for `robot_framework.process` reminder and SMS logic.
 
 Covers:
-- Baseline establishment (Rykker 0) on first processing without baseline.
-- Reminder timing from step 0 -> 1 (14 days) and 1 -> 2 (30 days).
+- Step 0 anchoring on case.caseDate without creating any baseline note.
+- Reminder timing from step 0 -> 1 (14 days after caseDate) and 1 -> 2 (30 days).
 - SMS behavior on NemSMS status change with and without suppression window.
 - Queue tracking updates.
 - Direct `handle_case` behavior when time window is met.
@@ -35,19 +35,15 @@ def _build_tracker_with_state(case_uuid: str, latest_step: int, last_date_iso: s
     })
 
 
-def test_new_case_without_baseline_establishes_rykker0(monkeypatch, orchestrator, fixed_now, fake_case):
-    """When no baseline exists, establish Rykker 0 (dry-run note), no reminder yet."""
-    # Silence unused fixtures in this test
+def test_step0_case_too_fresh_creates_no_note_and_no_reminder(monkeypatch, orchestrator, fixed_now, fake_case):
+    """When step==0 and caseDate is recent, no baseline note is created and no reminder is sent."""
     _ = fixed_now, fake_case
-    # Arrange: no baseline from nova_functions (set in conftest default)
     from robot_framework.rykker_borgere import service_platform_functions as sp
-    # Ensure registration status doesn't trigger SMS
     monkeypatch.setattr(sp, "check_registration_status", lambda cpr, acc: (False, False))
 
     tracker = DryRunSink(mock_state={})
     citizen = {"CPR": "0101011234", "Fornavn": "Ada"}
 
-    # Act
     sms_sent, reminder_sent = handle_citizen(
         citizen=citizen,
         nova_access=None,
@@ -56,11 +52,13 @@ def test_new_case_without_baseline_establishes_rykker0(monkeypatch, orchestrator
         action_sink=tracker,
     )
 
-    # Assert: baseline note is simulated in dry-run, but no reminder yet
+    # No reminder sent (caseDate is 5 days before fixed_now; 14-day window not met)
     assert sms_sent == 0
     assert reminder_sent == 0
-    assert any("Rykker 0 (baseline)" in n["details"] for n in tracker.nova_notes)
-    # Queue updated once
+    # No baseline note is created any more — robot only writes notes when reminders are sent
+    assert tracker.nova_notes == []
+    assert tracker.reminder_actions == []
+    # Queue still gets updated once with the current digital_post/nemsms status
     assert len(tracker.queue_updates) == 1
 
 

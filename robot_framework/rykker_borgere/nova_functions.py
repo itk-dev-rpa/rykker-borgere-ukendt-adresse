@@ -232,30 +232,28 @@ def get_latest_sms_info(case_uuid: str, nova_access: NovaAccess) -> str | None:
 
 
 def get_next_reminder_baseline(case: dict, nova_access: NovaAccess) -> tuple[int, str | None, int]:
-    """Compute next reminder baseline and interval based solely on reminder notes.
+    """Compute next reminder baseline and interval based on existing reminder notes.
 
     Returns a tuple of (step_sent, baseline_iso_date, interval_days) where:
-    - step_sent: how many reminder letters have already been sent (>= 0). Parsed from notes titled
-      "Rykker X sendt" where X is an integer (0, 1, 2, ...).
-    - baseline_iso_date: ISO date string to measure waiting time from for the NEXT step
-        * If step_sent == 0: baseline is the journal date of the latest "Rykker 0 sendt" note if it exists,
-          otherwise None (meaning baseline has not yet been established).
-        * If step_sent >= 1: baseline is the journal date of the latest reminder note (highest X).
-    - interval_days: 14 when step_sent == 0 (waiting to send step 1); otherwise 30 for subsequent steps.
+    - step_sent: how many reminder letters have already been sent (>= 1 only). Parsed
+      from journal notes titled "Rykker X sendt" or "Ikke sendt: Rykker X sendt" where
+      X is an integer >= 1. The robot never creates a "Rykker 0" note — step 0 simply
+      means no reminder has been sent yet.
+    - baseline_iso_date: ISO date string to measure waiting time from for the NEXT step.
+        * If step_sent == 0: the case's own caseDate (sagsdato) is used as anchor —
+          first reminder is sent 14 days after the case was opened. Returns None if
+          caseDate is missing from the payload (caller decides on a fallback).
+        * If step_sent >= 1: the journal date of the latest "Rykker X" note.
+    - interval_days: 14 when step_sent == 0; 30 for step_sent >= 1.
     """
     case_uuid = case["common"]["uuid"]
     step_sent, last_reminder_date = get_latest_reminder_info(case_uuid, nova_access)
 
     if step_sent == 0:
-        # When no reminder notes exist at all, last_reminder_date will be None. In that case the caller should
-        # create a step 0 note (in non-dry-run) to establish the baseline, and wait 14 days from that date.
-        interval_days = 14
-        baseline = last_reminder_date  # date of step 0 if it exists; else None
-        return step_sent, baseline, interval_days
+        case_date = case.get("caseAttributes", {}).get("caseDate")
+        return step_sent, case_date, 14
 
-    # For step_sent >= 1, use the date of the last reminder note as baseline and wait 30 days
-    interval_days = 30
-    return step_sent, last_reminder_date, interval_days
+    return step_sent, last_reminder_date, 30
 
 
 def _build_caseworker_payload(caseworker: Caseworker) -> dict:

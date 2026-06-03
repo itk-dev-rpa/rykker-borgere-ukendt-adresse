@@ -163,8 +163,9 @@ def _resolve_baseline_state(*, case: dict, case_uuid: str, nova_access: NovaAcce
                             is_dry: bool) -> tuple[int, str, int]:
     """Resolve (step_sent, baseline_date, interval_days) for a case.
 
-    Applies dry-run mock overlays when relevant, and establishes a Rykker 0
-    baseline note via the sink if none exists yet.
+    Applies dry-run mock overlays when relevant. No notes are created here — when
+    step_sent == 0 the baseline is the case's own caseDate (Sagsdato), so robot
+    activity is only journaled when an actual reminder is sent.
     """
     step_sent, baseline_date, interval_days = nova_functions.get_next_reminder_baseline(case, nova_access)
 
@@ -178,16 +179,14 @@ def _resolve_baseline_state(*, case: dict, case_uuid: str, nova_access: NovaAcce
                 else config.REMINDER_FOLLOWUP_INTERVAL_DAYS
             )
 
-    if step_sent == 0 and not baseline_date:
+    if not baseline_date:
+        # Should only happen if caseDate is missing from the Nova payload — fall back
+        # to "now" so the case starts a fresh 14-day clock, and log it for visibility.
         baseline_date = datetime.now().isoformat()
-        try:
-            action_sink.establish_baseline(case_uuid=case_uuid, step=0)
-            orchestrator_connection.log_info(
-                f"Etablerede baseline: 'Rykker 0 sendt' for sag {case['caseAttributes']['userFriendlyCaseNumber']}. "
-                f"Første rykker tidligst om {config.REMINDER_INITIAL_INTERVAL_DAYS} dage."
-            )
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            orchestrator_connection.log_error(f"Kunne ikke oprette 'Rykker 0 sendt' baseline-note: {str(e)}")
+        orchestrator_connection.log_error(
+            f"Sag {case['caseAttributes'].get('userFriendlyCaseNumber', case_uuid)} mangler caseDate. "
+            "Bruger nuværende tidspunkt som baseline."
+        )
 
     return step_sent, baseline_date, interval_days
 
