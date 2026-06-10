@@ -86,7 +86,7 @@ def process(orchestrator_connection: OrchestratorConnection, action_sink: DryRun
         sink.print_report(orchestrator_connection)
     else:
         itk_dev_event_log.emit(orchestrator_connection.process_name, "SMS sent", sms_sent_count)
-        itk_dev_event_log.emit(orchestrator_connection.process_name, "Reminders sent", reminders_sent_count)  # Også selvom det ikke er sendt - differentiering
+        itk_dev_event_log.emit(orchestrator_connection.process_name, "Reminders sent", reminders_sent_count)
         orchestrator_connection.log_info(
             f"Process completed. SMS sent: {sms_sent_count}, Reminders sent: {reminders_sent_count}"
         )
