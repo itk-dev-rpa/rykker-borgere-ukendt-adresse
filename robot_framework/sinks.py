@@ -71,7 +71,7 @@ class RealActionsSink:
         case_uuid = case["common"]["uuid"]
         case_number = case["caseAttributes"]["userFriendlyCaseNumber"]
         template_to_use = f"rykker_borgere/templates/Rykker {step} - Ukendt adresse.docx"
-        letter_name = f"{first_name}, din adresse er ukendt.docx"
+        letter_name = f"{first_name}, din adresse er ukendt"
         deadline_date = datetime.now() + timedelta(days=config.LETTER_DEADLINE_DAYS)
         letter_path = util.fill_template(template_to_use, f"tmp/{letter_name}", first_name, deadline_date, case_number)
         pdf_path = util.convert_docx_to_pdf(letter_path, "tmp/")

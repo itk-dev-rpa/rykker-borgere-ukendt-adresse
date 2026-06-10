@@ -141,7 +141,7 @@ def add_reminder_note(case_uuid: str, reminder_number: int, nova_access: NovaAcc
         note_title = f"Rykker {reminder_number} sendt"
         note_text = f"Rykker {reminder_number} er blevet sendt til borgeren vedrørende ukendt adresse."
     else:
-        note_title = f"Ikke sendt: Rykker {reminder_number} sendt"
+        note_title = f"Ikke sendt: Rykker {reminder_number}"
         note_text = (
             f"Rykker {reminder_number} blev IKKE sendt via digital post, da borgeren ikke er tilmeldt. "
             "Brevet er uploadet til sagen. Manuel opfølgning påkrævet."

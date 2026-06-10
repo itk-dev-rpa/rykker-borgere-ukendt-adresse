@@ -23,7 +23,7 @@ class BackofficeAlerts:
     Entries are appended throughout the loop and a single summary email is sent at the
     end of process(). In dry-run mode the lists are rendered in print_report instead.
     """
-    no_case: list[dict] = field(default_factory=list)      # {"fornavn", "cpr_masked"}
+    no_case: list[dict] = field(default_factory=list)      # {"fornavn", "cpr"}
     high_step: list[dict] = field(default_factory=list)    # {"case_number", "fornavn", "cpr_masked", "step"}
 
     def is_empty(self) -> bool:
@@ -86,7 +86,7 @@ def process(orchestrator_connection: OrchestratorConnection, action_sink: DryRun
         sink.print_report(orchestrator_connection)
     else:
         itk_dev_event_log.emit(orchestrator_connection.process_name, "SMS sent", sms_sent_count)
-        itk_dev_event_log.emit(orchestrator_connection.process_name, "Reminders sent", reminders_sent_count)
+        itk_dev_event_log.emit(orchestrator_connection.process_name, "Reminders sent", reminders_sent_count)  # Også selvom det ikke er sendt - differentiering
         orchestrator_connection.log_info(
             f"Process completed. SMS sent: {sms_sent_count}, Reminders sent: {reminders_sent_count}"
         )
@@ -218,11 +218,15 @@ def handle_citizen(*, citizen: dict, nova_access: NovaAccess, kombit_access: Kom
     if not cases:
         orchestrator_connection.log_trace(f"No case found for {first_name} (CPR: {masked})")
         if alerts is not None:
-            alerts.no_case.append({"fornavn": first_name, "cpr_masked": masked})
+            alerts.no_case.append({"fornavn": first_name, "cpr": cpr})
         return 0, 0
 
     case = cases[0]
     case_uuid = case["common"]["uuid"]
+
+    # If a case is set to "Oplyst", do not act on the case. This is how caseworkers pause the robot.
+    if case["state"]["progressState"] == "Oplyst":
+        return 0, 0
 
     try:
         digital_post_registered, nemsms_registered = service_platform_functions.check_registration_status(cpr, kombit_access)
