@@ -244,11 +244,11 @@ class DryRunSink:
             f"(ingen sag: {len(no_case)}, høj step: {len(high_step)})"
         )
         for entry in no_case:
-            orchestrator_connection.log_info(f"  - INGEN SAG: {entry['fornavn']} (CPR: {entry['cpr_masked']})")
+            orchestrator_connection.log_info(f"  - INGEN SAG: {entry['fornavn']} (CPR: {entry['cpr']})")
         for entry in high_step:
             orchestrator_connection.log_info(
                 f"  - HØJ STEP: Sag {entry['case_number']} | {entry['fornavn']} "
-                f"(CPR: {entry['cpr_masked']}) | step {entry['step']}"
+                f"(CPR: {entry['cpr']}) | step {entry['step']}"
             )
 
         orchestrator_connection.log_info("\n" + "=" * 80)

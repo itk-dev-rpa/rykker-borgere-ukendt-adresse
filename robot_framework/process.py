@@ -24,7 +24,7 @@ class BackofficeAlerts:
     end of process(). In dry-run mode the lists are rendered in print_report instead.
     """
     no_case: list[dict] = field(default_factory=list)      # {"fornavn", "cpr"}
-    high_step: list[dict] = field(default_factory=list)    # {"case_number", "fornavn", "cpr_masked", "step"}
+    high_step: list[dict] = field(default_factory=list)    # {"case_number", "fornavn", "cpr", "step"}
 
     def is_empty(self) -> bool:
         return not self.no_case and not self.high_step
@@ -110,7 +110,7 @@ def _format_backoffice_body(alerts: BackofficeAlerts) -> str:
         lines.append(f"INGEN SAG FUNDET ({len(alerts.no_case)} borgere):")
         lines.append(f"  {'Fornavn':<20}  {'CPR':<15}")
         for entry in alerts.no_case:
-            lines.append(f"  {entry['fornavn']:<20}  {entry['cpr_masked']:<15}")
+            lines.append(f"  {entry['fornavn']:<20}  {entry['cpr']:<15}")
         lines.append("")
 
     if alerts.high_step:
@@ -122,7 +122,7 @@ def _format_backoffice_body(alerts: BackofficeAlerts) -> str:
         for entry in alerts.high_step:
             lines.append(
                 f"  {entry['case_number']:<14}  {entry['fornavn']:<20}  "
-                f"{entry['cpr_masked']:<15}  {entry['step']:>4}"
+                f"{entry['cpr']:<15}  {entry['step']:>4}"
             )
         lines.append("")
 
@@ -258,7 +258,7 @@ def handle_citizen(*, citizen: dict, nova_access: NovaAccess, kombit_access: Kom
         alerts.high_step.append({
             "case_number": case["caseAttributes"]["userFriendlyCaseNumber"],
             "fornavn": first_name,
-            "cpr_masked": masked,
+            "cpr": masked,
             "step": step_sent,
         })
 
