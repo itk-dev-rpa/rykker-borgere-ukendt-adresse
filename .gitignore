@@ -169,6 +169,6 @@ robot_framework/tmp/*
 
 # Local dry-run simulation files
 robot_framework/dry_run_state.json
-#robot_framework/dryrun_local.py
+robot_framework/dryrun_local.py
 *.local.json
-#*.local.py
+*.local.py
