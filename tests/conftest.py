@@ -58,7 +58,13 @@ def orchestrator():
 
 @pytest.fixture
 def fake_case():
-    """Provide a minimal Nova case structure used by the process functions."""
+    """Provide a minimal Nova case structure used by the process functions.
+
+    caseDate is set 5 days before the fixed_now used in tests, so the default
+    case is too fresh for Rykker 1 (14-day window not met) — tests that want
+    the window-met scenario override via mock_nova_reminders or feed an explicit
+    baseline_date to handle_case.
+    """
     return {
         "common": {"uuid": "case-uuid-123"},
         # caseDate is 7 days before fixed_now (2026-04-27): recent enough to trigger no action by default.

@@ -44,6 +44,15 @@ REMINDER_FOLLOWUP_INTERVAL_DAYS = 30  # Between subsequent reminders
 SUPPRESS_SMS_WINDOW_DAYS = 7          # Suppress NemSMS-change SMS within N days of next reminder
 LETTER_DEADLINE_DAYS = 30             # Deadline written into the reminder letter
 
+# Retry strategy for transient Service Platform errors in check_registration_status.
+# Total attempts = 1 + REGISTRATION_CHECK_RETRIES. Backoff is exponential (1s, 3s).
+REGISTRATION_CHECK_RETRIES = 2
+
+# Backoffice notifications: a single aggregated email per robot run when any citizen
+# matches the alert criteria (no case found, or step >= HIGH_STEP_THRESHOLD).
+BACKOFFICE_RECIPIENT = "kontroladresse@mkb.aarhus.dk"
+HIGH_STEP_THRESHOLD = 24
+
 KEYVAULT_CREDENTIALS = "Keyvault"
 KEYVAULT_URI = "Keyvault URI"
 KEYVAULT_PATH = "Digital_Post_Ukendt_Adresse"

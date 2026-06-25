@@ -41,13 +41,11 @@ def test_new_case_recent_case_date_no_action_no_note(monkeypatch, orchestrator, 
     _ = fixed_now, fake_case
     # Arrange: baseline derives from caseDate (recent, set in conftest default)
     from robot_framework.rykker_borgere import service_platform_functions as sp
-    # Ensure registration status doesn't trigger SMS
     monkeypatch.setattr(sp, "check_registration_status", lambda cpr, acc: (False, False))
 
     tracker = DryRunSink(mock_state={})
     citizen = {"CPR": "0101011234", "Fornavn": "Ada"}
 
-    # Act
     sms_sent, reminder_sent = handle_citizen(
         citizen=citizen,
         nova_access=None,
