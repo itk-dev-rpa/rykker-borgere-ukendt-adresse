@@ -94,8 +94,9 @@ def _resolve_baseline_state(*, case: dict, case_uuid: str, nova_access: NovaAcce
                             is_dry: bool) -> tuple[int, str, int]:
     """Resolve (step_sent, baseline_date, interval_days) for a case.
 
-    Applies dry-run mock overlays when relevant, and establishes a Rykker 0
-    baseline note via the sink if none exists yet.
+    For a case with no real reminder yet (step 0), the baseline is the case creation
+    date (caseDate), so the waiting window is measured from when the case was created.
+    Applies dry-run mock overlays when relevant.
     """
     step_sent, baseline_date, interval_days = nova_functions.get_next_reminder_baseline(case, nova_access)
 
@@ -110,15 +111,13 @@ def _resolve_baseline_state(*, case: dict, case_uuid: str, nova_access: NovaAcce
             )
 
     if step_sent == 0 and not baseline_date:
+        # caseDate was missing or unparseable; fall back to "now" so we wait the full
+        # initial interval rather than crashing on datetime.fromisoformat(None).
         baseline_date = datetime.now().isoformat()
-        try:
-            action_sink.establish_baseline(case_uuid=case_uuid, step=0)
-            orchestrator_connection.log_info(
-                f"Etablerede baseline: 'Rykker 0 sendt' for sag {case['caseAttributes']['userFriendlyCaseNumber']}. "
-                f"Første rykker tidligst om {config.REMINDER_INITIAL_INTERVAL_DAYS} dage."
-            )
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            orchestrator_connection.log_error(f"Kunne ikke oprette 'Rykker 0 sendt' baseline-note: {str(e)}")
+        orchestrator_connection.log_error(
+            f"Manglende/ugyldig caseDate for sag {case['caseAttributes']['userFriendlyCaseNumber']}; "
+            f"bruger nu som baseline (første rykker tidligst om {config.REMINDER_INITIAL_INTERVAL_DAYS} dage)."
+        )
 
     return step_sent, baseline_date, interval_days
 
