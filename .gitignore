@@ -166,6 +166,7 @@ robot_framework/tmp/*
 ~$*
 
 *.pem
+notes.md
 
 # Local dry-run simulation files
 robot_framework/dry_run_state.json

@@ -39,7 +39,7 @@ SQL_QUERY = "SELECT * FROM [DWH].[Mart].[AdresseAktuel] WHERE Vejkode = 9901 AND
 SQL_CONN_STRING = "Driver={ODBC Driver 17 for SQL Server};Server=FaellesSQL;Trusted_Connection=yes;"
 
 # Reminder timing (in days)
-REMINDER_INITIAL_INTERVAL_DAYS = 14   # From case opening (caseDate) to Rykker 1
+REMINDER_INITIAL_INTERVAL_DAYS = 14   # From case creation date (caseDate) to Rykker 1
 REMINDER_FOLLOWUP_INTERVAL_DAYS = 30  # Between subsequent reminders
 SUPPRESS_SMS_WINDOW_DAYS = 7          # Suppress NemSMS-change SMS within N days of next reminder
 LETTER_DEADLINE_DAYS = 30             # Deadline written into the reminder letter

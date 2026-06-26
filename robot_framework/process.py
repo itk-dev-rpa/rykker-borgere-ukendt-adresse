@@ -179,13 +179,13 @@ def _resolve_baseline_state(*, case: dict, case_uuid: str, nova_access: NovaAcce
                 else config.REMINDER_FOLLOWUP_INTERVAL_DAYS
             )
 
-    if not baseline_date:
-        # Should only happen if caseDate is missing from the Nova payload — fall back
-        # to "now" so the case starts a fresh 14-day clock, and log it for visibility.
+    if step_sent == 0 and not baseline_date:
+        # caseDate was missing or unparseable; fall back to "now" so we wait the full
+        # initial interval rather than crashing on datetime.fromisoformat(None).
         baseline_date = datetime.now().isoformat()
         orchestrator_connection.log_error(
-            f"Sag {case['caseAttributes'].get('userFriendlyCaseNumber', case_uuid)} mangler caseDate. "
-            "Bruger nuværende tidspunkt som baseline."
+            f"Manglende/ugyldig caseDate for sag {case['caseAttributes']['userFriendlyCaseNumber']}; "
+            f"bruger nu som baseline (første rykker tidligst om {config.REMINDER_INITIAL_INTERVAL_DAYS} dage)."
         )
 
     return step_sent, baseline_date, interval_days

@@ -1,8 +1,8 @@
 """Unit tests for `robot_framework.process` reminder and SMS logic.
 
 Covers:
-- Step 0 anchoring on case.caseDate without creating any baseline note.
-- Reminder timing from step 0 -> 1 (14 days after caseDate) and 1 -> 2 (30 days).
+- Baseline derived from the case creation date (caseDate) on first processing.
+- Reminder timing from step 0 -> 1 (14 days) and 1 -> 2 (30 days).
 - SMS behavior on NemSMS status change with and without suppression window.
 - Queue tracking updates.
 - Direct `handle_case` behavior when time window is met.
@@ -35,9 +35,11 @@ def _build_tracker_with_state(case_uuid: str, latest_step: int, last_date_iso: s
     })
 
 
-def test_step0_case_too_fresh_creates_no_note_and_no_reminder(monkeypatch, orchestrator, fixed_now, fake_case):
-    """When step==0 and caseDate is recent, no baseline note is created and no reminder is sent."""
+def test_new_case_recent_case_date_no_action_no_note(monkeypatch, orchestrator, fixed_now, fake_case):
+    """A new case with a recent caseDate sends nothing and creates no baseline note."""
+    # Silence unused fixtures in this test
     _ = fixed_now, fake_case
+    # Arrange: baseline derives from caseDate (recent, set in conftest default)
     from robot_framework.rykker_borgere import service_platform_functions as sp
     monkeypatch.setattr(sp, "check_registration_status", lambda cpr, acc: (False, False))
 
@@ -52,14 +54,72 @@ def test_step0_case_too_fresh_creates_no_note_and_no_reminder(monkeypatch, orche
         action_sink=tracker,
     )
 
-    # No reminder sent (caseDate is 5 days before fixed_now; 14-day window not met)
+    # Assert: no reminder yet and, crucially, no baseline note is created anymore
     assert sms_sent == 0
     assert reminder_sent == 0
-    # No baseline note is created any more — robot only writes notes when reminders are sent
     assert tracker.nova_notes == []
-    assert tracker.reminder_actions == []
-    # Queue still gets updated once with the current digital_post/nemsms status
+    # Queue updated once
     assert len(tracker.queue_updates) == 1
+
+
+def test_old_case_date_triggers_immediate_rykker1(monkeypatch, orchestrator, fixed_now, fake_case):
+    """A step-0 case whose caseDate is older than 14 days sends Rykker 1 immediately."""
+    _ = fake_case
+    from robot_framework.rykker_borgere import nova_functions as nf
+    old_case = {
+        "common": {"uuid": "case-uuid-123"},
+        "caseAttributes": {
+            "userFriendlyCaseNumber": "CASE-0001",
+            "caseDate": (fixed_now - timedelta(days=20)).isoformat(),
+        },
+    }
+    monkeypatch.setattr(nf, "get_cases_by_kle_and_cpr", lambda access, kle, cpr: [old_case])
+
+    tracker = DryRunSink(mock_state={})
+    citizen = {"CPR": "0101011234", "Fornavn": "Ada"}
+
+    # Act
+    sms_sent, reminder_sent = handle_citizen(
+        citizen=citizen,
+        nova_access=None,
+        kombit_access=None,
+        orchestrator_connection=orchestrator,
+        action_sink=tracker,
+    )
+
+    # Assert: Rykker 1 sent on first sight, no baseline note
+    assert sms_sent == 0
+    assert reminder_sent == 1
+    assert tracker.reminder_actions[0]["step"] == 1
+    assert tracker.nova_notes == []
+
+
+def test_missing_case_date_falls_back_safely(monkeypatch, orchestrator, fixed_now, fake_case):
+    """A step-0 case without caseDate does not crash; it waits and logs an error."""
+    _ = fixed_now, fake_case
+    from robot_framework.rykker_borgere import nova_functions as nf
+    no_date_case = {
+        "common": {"uuid": "case-uuid-123"},
+        "caseAttributes": {"userFriendlyCaseNumber": "CASE-0001"},
+    }
+    monkeypatch.setattr(nf, "get_cases_by_kle_and_cpr", lambda access, kle, cpr: [no_date_case])
+
+    tracker = DryRunSink(mock_state={})
+    citizen = {"CPR": "0101011234", "Fornavn": "Ada"}
+
+    # Act
+    sms_sent, reminder_sent = handle_citizen(
+        citizen=citizen,
+        nova_access=None,
+        kombit_access=None,
+        orchestrator_connection=orchestrator,
+        action_sink=tracker,
+    )
+
+    # Assert: no crash, no reminder (fell back to "now"), error logged about caseDate
+    assert sms_sent == 0
+    assert reminder_sent == 0
+    assert any("caseDate" in e for e in orchestrator.errors)
 
 
 def test_14_days_since_rykker0_sends_rykker1(orchestrator, fixed_now, fake_case):

@@ -20,6 +20,7 @@ Only the *write* operations are skipped.
 import argparse
 import os
 import sys
+from uuid import uuid4
 from dotenv import load_dotenv
 
 from OpenOrchestrator.orchestrator_connection.connection import OrchestratorConnection  # noqa: E402
@@ -58,6 +59,7 @@ def main() -> int:
         crypto_key,
         "",
         "",
+        uuid4()
     )
     sink = activate_dryrun(oc)
     sink.verbose = True

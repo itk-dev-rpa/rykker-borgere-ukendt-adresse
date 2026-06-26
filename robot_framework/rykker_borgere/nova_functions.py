@@ -2,6 +2,7 @@
 import re
 import urllib
 import uuid
+from datetime import datetime
 from typing import Literal, Any
 
 import requests
@@ -173,6 +174,19 @@ def add_sms_note(case_uuid: str, nova_access: NovaAccess, reason: str = None, ca
     return nova_notes.add_text_note(case_uuid, note_title, note_text, caseworker, approved=False, nova_access=nova_access)
 
 
+def _get_case_notes(case_uuid: str, nova_access: NovaAccess) -> tuple:
+    """Return the case's journal notes, or an empty tuple if it has none.
+
+    Nova omits the 'journalNotes' key for a case that has never had any notes, which
+    makes the library's get_notes raise KeyError. A case without notes simply hasn't
+    been worked on yet, so treat that as an empty result rather than an error.
+    """
+    try:
+        return nova_notes.get_notes(case_uuid, nova_access, 0, 500)
+    except KeyError:
+        return ()
+
+
 def get_latest_reminder_info(case_uuid: str, nova_access: NovaAccess) -> tuple[int, str | None]:
     """Get information about the latest reminder sent for a case.
 
@@ -188,7 +202,7 @@ def get_latest_reminder_info(case_uuid: str, nova_access: NovaAccess) -> tuple[i
         - step_number is 0 if no reminders have been sent, otherwise the number from the latest reminder
         - last_reminder_date is None if no reminders sent, otherwise ISO format date string
     """
-    notes = nova_notes.get_notes(case_uuid, nova_access, 0, 500)
+    notes = _get_case_notes(case_uuid, nova_access)
 
     latest_step = 0
     latest_date = None
@@ -221,7 +235,7 @@ def get_single_cpr_case_party(case: dict) -> CaseParty | None:
 
 def get_latest_sms_info(case_uuid: str, nova_access: NovaAccess) -> str | None:
     """Return the ISO date of the latest "SMS sendt" note, or None if none found."""
-    notes = nova_notes.get_notes(case_uuid, nova_access, 0, 500)
+    notes = _get_case_notes(case_uuid, nova_access)
     latest_date = None
     for note in notes:
         if note.title and note.title.strip() == "SMS sendt":
@@ -231,29 +245,47 @@ def get_latest_sms_info(case_uuid: str, nova_access: NovaAccess) -> str | None:
     return latest_date
 
 
+def _normalize_iso_date(value: str | None) -> str | None:
+    """Return a naive ISO date string parseable by datetime.fromisoformat, or None.
+
+    Nova may return dates with a timezone (offset or trailing 'Z'). Downstream the
+    baseline is compared against a naive datetime.now(), so any timezone is dropped
+    to keep the comparison valid. Returns None for empty or unparseable input.
+    """
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed.replace(tzinfo=None).isoformat()
+
+
 def get_next_reminder_baseline(case: dict, nova_access: NovaAccess) -> tuple[int, str | None, int]:
-    """Compute next reminder baseline and interval based on existing reminder notes.
+    """Compute next reminder baseline and interval for a case.
 
     Returns a tuple of (step_sent, baseline_iso_date, interval_days) where:
-    - step_sent: how many reminder letters have already been sent (>= 1 only). Parsed
-      from journal notes titled "Rykker X sendt" or "Ikke sendt: Rykker X sendt" where
-      X is an integer >= 1. The robot never creates a "Rykker 0" note — step 0 simply
-      means no reminder has been sent yet.
-    - baseline_iso_date: ISO date string to measure waiting time from for the NEXT step.
-        * If step_sent == 0: the case's own caseDate (sagsdato) is used as anchor —
-          first reminder is sent 14 days after the case was opened. Returns None if
-          caseDate is missing from the payload (caller decides on a fallback).
-        * If step_sent >= 1: the journal date of the latest "Rykker X" note.
-    - interval_days: 14 when step_sent == 0; 30 for step_sent >= 1.
+    - step_sent: how many reminder letters have already been sent (>= 0). Parsed from notes titled
+      "Rykker X sendt" where X is an integer (1, 2, ...); a legacy "Rykker 0 sendt" note counts as 0.
+    - baseline_iso_date: ISO date string to measure waiting time from for the NEXT step
+        * If step_sent == 0: baseline is the case creation date (caseDate), or None if it is
+          missing/unparseable (the caller applies a safe fallback).
+        * If step_sent >= 1: baseline is the journal date of the latest reminder note (highest X).
+    - interval_days: 14 when step_sent == 0 (waiting to send step 1); otherwise 30 for subsequent steps.
     """
     case_uuid = case["common"]["uuid"]
     step_sent, last_reminder_date = get_latest_reminder_info(case_uuid, nova_access)
 
     if step_sent == 0:
-        case_date = case.get("caseAttributes", {}).get("caseDate")
-        return step_sent, case_date, 14
+        # No real reminder sent yet: measure the wait from when the case was created. Any legacy
+        # "Rykker 0 sendt" note is ignored for timing (it parses as step 0 and is not counted).
+        interval_days = 14
+        baseline = _normalize_iso_date(case.get("caseAttributes", {}).get("caseDate"))
+        return step_sent, baseline, interval_days
 
-    return step_sent, last_reminder_date, 30
+    # For step_sent >= 1, use the date of the last reminder note as baseline and wait 30 days
+    interval_days = 30
+    return step_sent, last_reminder_date, interval_days
 
 
 def _build_caseworker_payload(caseworker: Caseworker) -> dict:
