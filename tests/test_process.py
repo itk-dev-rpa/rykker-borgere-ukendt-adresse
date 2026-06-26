@@ -59,7 +59,7 @@ def test_new_case_recent_case_date_no_action_no_note(monkeypatch, orchestrator, 
     # Assert: no reminder yet and, crucially, no baseline note is created anymore
     assert sms_sent == 0
     assert reminder_sent == 0
-    assert tracker.nova_notes == []
+    assert not tracker.nova_notes
     # Queue updated once
     assert len(tracker.queue_updates) == 1
 
@@ -93,7 +93,7 @@ def test_old_case_date_triggers_immediate_rykker1(monkeypatch, orchestrator, fix
     assert sms_sent == 0
     assert reminder_sent == 1
     assert tracker.reminder_actions[0]["step"] == 1
-    assert tracker.nova_notes == []
+    assert not tracker.nova_notes
 
 
 def test_missing_case_date_falls_back_safely(monkeypatch, orchestrator, fixed_now, fake_case):
