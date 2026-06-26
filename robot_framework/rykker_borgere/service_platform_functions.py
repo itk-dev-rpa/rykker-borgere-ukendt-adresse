@@ -88,8 +88,8 @@ def send_sms(kombit_access: KombitAccess, recipient_cpr: str, language: str = "d
 def check_registration_status(cpr: str, kombit_access: KombitAccess) -> tuple[bool, bool]:
     """Check Digital Post and NemSMS registration status for a citizen.
 
-    Retries transient errors (5xx, ConnectionError, Timeout) up to
-    `config.REGISTRATION_CHECK_RETRIES` times, with a fixed delay between attempts.
+    Makes up to `config.REGISTRATION_CHECK_ATTEMPTS` attempts on transient errors
+    (5xx, ConnectionError, Timeout), with a fixed delay between attempts.
     4xx errors are NOT retried — they indicate auth/validation problems that won't
     resolve by waiting, so the HTTPError is re-raised immediately.
 
@@ -104,8 +104,8 @@ def check_registration_status(cpr: str, kombit_access: KombitAccess) -> tuple[bo
         HTTPError: 4xx response, or persistent failure after retries are exhausted.
         RequestsConnectionError, Timeout: persistent network failure after retries.
     """
-    last_attempt = config.REGISTRATION_CHECK_RETRIES
-    for attempt in range(last_attempt + 1):
+    attempts = config.REGISTRATION_CHECK_ATTEMPTS
+    for attempt in range(attempts):
         try:
             return (
                 digital_post.is_registered(cpr, "digitalpost", kombit_access),
@@ -114,10 +114,10 @@ def check_registration_status(cpr: str, kombit_access: KombitAccess) -> tuple[bo
         except HTTPError as e:
             status = e.response.status_code if e.response is not None else None
             client_error = status is not None and 400 <= status < 500
-            if client_error or attempt == last_attempt:
-                raise  # 4xx won't resolve on retry; otherwise retries are exhausted
+            if client_error or attempt == attempts - 1:
+                raise  # 4xx won't resolve on retry; otherwise attempts are exhausted
         except (RequestsConnectionError, Timeout):
-            if attempt == last_attempt:
+            if attempt == attempts - 1:
                 raise
         time.sleep(config.REGISTRATION_CHECK_RETRY_DELAY)
 

@@ -233,7 +233,7 @@ def handle_citizen(*, citizen: dict, nova_access: NovaAccess, kombit_access: Kom
         digital_post_registered, nemsms_registered = service_platform_functions.check_registration_status(cpr, kombit_access)
     except HTTPError as e:
         # check_registration_status has already retried internally up to
-        # config.REGISTRATION_CHECK_RETRIES times. Reaching here means the failure is
+        # config.REGISTRATION_CHECK_ATTEMPTS attempts. Reaching here means the failure is
         # persistent — skip the citizen and try again on the next Monday run.
         orchestrator_connection.log_error(f"Failed to check registration status for {first_name}: {e.response.text}")
         return 0, 0
