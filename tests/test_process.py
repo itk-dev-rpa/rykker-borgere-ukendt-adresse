@@ -57,7 +57,7 @@ def test_new_case_recent_case_date_no_action_no_note(monkeypatch, orchestrator, 
     # Assert: no reminder yet and, crucially, no baseline note is created anymore
     assert sms_sent == 0
     assert reminder_sent == 0
-    assert tracker.nova_notes == []
+    assert not tracker.nova_notes
     # Queue updated once
     assert len(tracker.queue_updates) == 1
 
@@ -72,6 +72,7 @@ def test_old_case_date_triggers_immediate_rykker1(monkeypatch, orchestrator, fix
             "userFriendlyCaseNumber": "CASE-0001",
             "caseDate": (fixed_now - timedelta(days=20)).isoformat(),
         },
+        "state": {"progressState": "Opstaaet"},
     }
     monkeypatch.setattr(nf, "get_cases_by_kle_and_cpr", lambda access, kle, cpr: [old_case])
 
@@ -87,11 +88,11 @@ def test_old_case_date_triggers_immediate_rykker1(monkeypatch, orchestrator, fix
         action_sink=tracker,
     )
 
-    # Assert: Rykker 1 sent on first sight, no baseline note
+    # Assert: Rykker 1 sent on first sight, with its note and no "Rykker 0" baseline note
     assert sms_sent == 0
     assert reminder_sent == 1
     assert tracker.reminder_actions[0]["step"] == 1
-    assert tracker.nova_notes == []
+    assert [n["note_type"] for n in tracker.nova_notes] == ["Rykker 1 sendt"]
 
 
 def test_missing_case_date_falls_back_safely(monkeypatch, orchestrator, fixed_now, fake_case):
@@ -101,6 +102,7 @@ def test_missing_case_date_falls_back_safely(monkeypatch, orchestrator, fixed_no
     no_date_case = {
         "common": {"uuid": "case-uuid-123"},
         "caseAttributes": {"userFriendlyCaseNumber": "CASE-0001"},
+        "state": {"progressState": "Opstaaet"},
     }
     monkeypatch.setattr(nf, "get_cases_by_kle_and_cpr", lambda access, kle, cpr: [no_date_case])
 

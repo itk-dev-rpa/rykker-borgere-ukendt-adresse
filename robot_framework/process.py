@@ -27,6 +27,7 @@ class BackofficeAlerts:
     high_step: list[dict] = field(default_factory=list)    # {"case_number", "fornavn", "cpr", "step"}
 
     def is_empty(self) -> bool:
+        """Return True when no citizens need backoffice attention this run."""
         return not self.no_case and not self.high_step
 
 

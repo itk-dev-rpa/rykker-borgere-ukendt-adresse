@@ -69,6 +69,7 @@ def fake_case():
         "common": {"uuid": "case-uuid-123"},
         # caseDate is 7 days before fixed_now (2026-04-27): recent enough to trigger no action by default.
         "caseAttributes": {"userFriendlyCaseNumber": "CASE-0001", "caseDate": "2026-04-20T09:00:00"},
+        "state": {"progressState": "Opstaaet"},
     }
 
 

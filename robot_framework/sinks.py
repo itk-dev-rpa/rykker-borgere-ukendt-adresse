@@ -97,7 +97,7 @@ class RealActionsSink:
             )
 
 
-class DryRunSink:
+class DryRunSink:  # pylint: disable=too-many-instance-attributes
     """Records actions that would be performed in a dry run."""
 
     is_dry_run: bool = True
