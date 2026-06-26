@@ -93,6 +93,7 @@ def test_old_case_date_triggers_immediate_rykker1(monkeypatch, orchestrator, fix
     assert reminder_sent == 1
     assert tracker.reminder_actions[0]["step"] == 1
     assert [n["note_type"] for n in tracker.nova_notes] == ["Rykker 1 sendt"]
+    assert not tracker.nova_notes
 
 
 def test_missing_case_date_falls_back_safely(monkeypatch, orchestrator, fixed_now, fake_case):
