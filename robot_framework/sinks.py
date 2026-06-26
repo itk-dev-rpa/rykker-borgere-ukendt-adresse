@@ -28,12 +28,6 @@ class RealActionsSink:
         self._nova = nova_access
         self._kombit = kombit_access
 
-    def establish_baseline(self, *, case_uuid: str, step: int = 0) -> None:
-        """Create a Nova reminder baseline (Rykker 0) in production."""
-        if self._nova is None:
-            raise RuntimeError("RealActionsSink requires NovaAccess for baseline establishment")
-        nova_functions.add_reminder_note(case_uuid, step, self._nova)
-
     def send_sms(self, case: dict, cpr: str, _first_name: str, *, language: str, reason: str = "") -> None:
         """Send an SMS via Serviceplatformen and add a Nova note documenting it."""
         if self._kombit is None:
@@ -136,11 +130,6 @@ class DryRunSink:
             "note_type": note_type,
             "details": details,
         })
-
-    def establish_baseline(self, *, case_uuid: str, step: int = 0):
-        """Record that we would establish a baseline (Rykker 0) now."""
-        self.add_nova_note(case_uuid, "Rykker note", f"Rykker {step} (baseline)")
-        self._say(f"Baseline: Rykker {step}")
 
     def print_report(self, orchestrator_connection: OrchestratorConnection):
         """Print a detailed dry-run report."""
