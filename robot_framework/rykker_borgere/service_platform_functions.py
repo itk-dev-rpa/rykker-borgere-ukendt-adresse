@@ -89,7 +89,7 @@ def check_registration_status(cpr: str, kombit_access: KombitAccess) -> tuple[bo
     """Check Digital Post and NemSMS registration status for a citizen.
 
     Retries transient errors (5xx, ConnectionError, Timeout) up to
-    `config.REGISTRATION_CHECK_RETRIES` times with exponential backoff (1s, 3s).
+    `config.REGISTRATION_CHECK_RETRIES` times, with a fixed delay between attempts.
     4xx errors are NOT retried — they indicate auth/validation problems that won't
     resolve by waiting, so the HTTPError is re-raised immediately.
 
@@ -104,24 +104,21 @@ def check_registration_status(cpr: str, kombit_access: KombitAccess) -> tuple[bo
         HTTPError: 4xx response, or persistent failure after retries are exhausted.
         RequestsConnectionError, Timeout: persistent network failure after retries.
     """
-    backoffs = [1, 3]  # seconds between attempts 1→2 and 2→3
-    attempts = 1 + config.REGISTRATION_CHECK_RETRIES
-
-    for attempt_index in range(attempts):
+    last_attempt = config.REGISTRATION_CHECK_RETRIES
+    for attempt in range(last_attempt + 1):
         try:
-            digital_post_registered = digital_post.is_registered(cpr, "digitalpost", kombit_access)
-            nemsms_registered = digital_post.is_registered(cpr, "nemsms", kombit_access)
-            return (digital_post_registered, nemsms_registered)
+            return (
+                digital_post.is_registered(cpr, "digitalpost", kombit_access),
+                digital_post.is_registered(cpr, "nemsms", kombit_access),
+            )
         except HTTPError as e:
             status = e.response.status_code if e.response is not None else None
-            if status is not None and 400 <= status < 500:
-                raise  # client-side error: don't retry
-            if attempt_index == attempts - 1:
-                raise
+            client_error = status is not None and 400 <= status < 500
+            if client_error or attempt == last_attempt:
+                raise  # 4xx won't resolve on retry; otherwise retries are exhausted
         except (RequestsConnectionError, Timeout):
-            if attempt_index == attempts - 1:
+            if attempt == last_attempt:
                 raise
-        time.sleep(backoffs[attempt_index])
+        time.sleep(config.REGISTRATION_CHECK_RETRY_DELAY)
 
-    # Unreachable — loop always returns or raises.
-    raise RuntimeError("check_registration_status retry loop exited unexpectedly")
+    raise RuntimeError("check_registration_status: retry loop exhausted")
