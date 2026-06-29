@@ -162,19 +162,6 @@ def add_sms_note(case_uuid: str, nova_access: NovaAccess, reason: str = None, ca
     return nova_notes.add_text_note(case_uuid, note_title, note_text, caseworker, approved=False, nova_access=nova_access)
 
 
-def _get_case_notes(case_uuid: str, nova_access: NovaAccess) -> tuple:
-    """Return the case's journal notes, or an empty tuple if it has none.
-
-    Nova omits the 'journalNotes' key for a case that has never had any notes, which
-    makes the library's get_notes raise KeyError. A case without notes simply hasn't
-    been worked on yet, so treat that as an empty result rather than an error.
-    """
-    try:
-        return nova_notes.get_notes(case_uuid, nova_access, 0, 500)
-    except KeyError:
-        return ()
-
-
 def get_latest_reminder_info(case_uuid: str, nova_access: NovaAccess) -> tuple[int, str | None]:
     """Get information about the latest reminder sent for a case.
 
@@ -190,7 +177,7 @@ def get_latest_reminder_info(case_uuid: str, nova_access: NovaAccess) -> tuple[i
         - step_number is 0 if no reminders have been sent, otherwise the number from the latest reminder
         - last_reminder_date is None if no reminders sent, otherwise ISO format date string
     """
-    notes = _get_case_notes(case_uuid, nova_access)
+    notes = nova_notes.get_notes(case_uuid, nova_access, 0, 500)
 
     latest_step = 0
     latest_date = None
@@ -223,18 +210,6 @@ def get_single_cpr_case_party(case: dict) -> CaseParty | None:
     if getattr(party, "identification_type", None) != "CprNummer":
         return None
     return party
-
-
-def get_latest_sms_info(case_uuid: str, nova_access: NovaAccess) -> str | None:
-    """Return the ISO date of the latest "SMS sendt" note, or None if none found."""
-    notes = _get_case_notes(case_uuid, nova_access)
-    latest_date = None
-    for note in notes:
-        if note.title and note.title.strip() == "SMS sendt":
-            # Keep the latest by journal_date ordering (notes are typically returned newest first, but be safe)
-            if latest_date is None or (note.journal_date and note.journal_date > latest_date):
-                latest_date = note.journal_date
-    return latest_date
 
 
 def _normalize_iso_date(value: str | None) -> str | None:

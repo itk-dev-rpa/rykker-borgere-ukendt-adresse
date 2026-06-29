@@ -46,15 +46,6 @@ class RealActionsSink:
             raise RuntimeError("RealActionsSink requires OrchestratorConnection for queue updates")
         util.update_queue_element(self._orc, config.QUEUE_NAME, encrypted_ref, digital_post, nemsms, case_uuid)
 
-    def add_nova_note(self, case_uuid: str, note_type: str, details: str) -> None:
-        """Add a generic text note to the Nova case (if Nova access is available)."""
-        if self._nova is None:
-            return
-        nova_functions.nova_notes.add_text_note(
-            case_uuid, note_type, details, nova_functions.config.CASEWORKER,
-            approved=False, nova_access=self._nova,
-        )
-
     def send_reminder(self, case: dict, cpr: str, first_name: str, step: int) -> None:
         """Send reminder letter and add Nova note in production."""
         if self._nova is None or self._kombit is None:
@@ -81,7 +72,6 @@ class DryRunSink:
         self.sms_actions = []
         self.reminder_actions = []
         self.queue_updates = []
-        self.nova_notes = []
         self.verbose = verbose
         mock_state = mock_state or {}
         self.mock_queue_state = mock_state.get("queue", {})
@@ -123,14 +113,6 @@ class DryRunSink:
         })
         self._say(f"Queue: digital_post={digital_post}, nemsms={nemsms}")
 
-    def add_nova_note(self, case_uuid: str, note_type: str, details: str):
-        """Record a Nova note that would be added."""
-        self.nova_notes.append({
-            "case_uuid": case_uuid,
-            "note_type": note_type,
-            "details": details,
-        })
-
     def print_report(self, orchestrator_connection: OrchestratorConnection):
         """Print a detailed dry-run report."""
         orchestrator_connection.log_info("=" * 80)
@@ -158,17 +140,10 @@ class DryRunSink:
                 f"  - Ref: {upd['encrypted_ref']} | digital_post={upd['digital_post']} | nemsms={upd['nemsms']} | case_uuid={upd['case_uuid']}"
             )
 
-        orchestrator_connection.log_info(f"\n📝 Nova notater der ville blive tilføjet: {len(self.nova_notes)}")
-        for note in self.nova_notes:
-            orchestrator_connection.log_info(
-                f"  - {note['note_type']} (case {note['case_uuid']}): {note['details']}"
-            )
-
         orchestrator_connection.log_info("\n" + "=" * 80)
         orchestrator_connection.log_info("OPSUMMERING")
         orchestrator_connection.log_info("=" * 80)
         orchestrator_connection.log_info(f"Ville have sendt {len(self.sms_actions)} SMS")
         orchestrator_connection.log_info(f"Ville have sendt {len(self.reminder_actions)} rykkere")
         orchestrator_connection.log_info(f"Ville have opdateret {len(self.queue_updates)} queue elementer")
-        orchestrator_connection.log_info(f"Ville have tilføjet {len(self.nova_notes)} Nova notater")
         orchestrator_connection.log_info("=" * 80)
