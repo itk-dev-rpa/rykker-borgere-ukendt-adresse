@@ -121,7 +121,7 @@ def test_get_notes_single_batch(mock_get_notes):
     """When the first batch already meets `expected_notes`, no further fetch is made."""
     mock_get_notes.return_value = [Mock(spec=JournalNote) for _ in range(100)]
 
-    notes = nova_notes.get_notes("case-uuid-123", Mock(), 0, 500)
+    notes = nova_notes.get_notes("case-uuid-123", Mock())
 
     assert len(notes) == 100
     assert mock_get_notes.call_count == 1

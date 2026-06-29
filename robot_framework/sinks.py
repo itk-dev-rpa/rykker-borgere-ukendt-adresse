@@ -46,15 +46,6 @@ class RealActionsSink:
             raise RuntimeError("RealActionsSink requires OrchestratorConnection for queue updates")
         util.update_queue_element(self._orc, config.QUEUE_NAME, encrypted_ref, digital_post, nemsms, case_uuid)
 
-    def add_nova_note(self, case_uuid: str, note_type: str, details: str) -> None:
-        """Add a generic text note to the Nova case (if Nova access is available)."""
-        if self._nova is None:
-            return
-        nova_functions.nova_notes.add_text_note(
-            case_uuid, note_type, details, nova_functions.config.CASEWORKER,
-            approved=False, nova_access=self._nova,
-        )
-
     def send_reminder(self, case: dict, cpr: str, first_name: str, step: int, *,
                       nemsms_registered: bool = False) -> None:
         """Send reminder letter and add Nova note in production.
@@ -122,8 +113,7 @@ class DryRunSink:  # pylint: disable=too-many-instance-attributes
             print(f"  → {msg}", flush=True)
 
     def send_sms(self, case: dict, cpr: str, first_name: str, *, language: str, reason: str = ""):
-        """Record an SMS that would be sent — plus the SMS-sendt note that prod writes."""
-        case_uuid = case["common"]["uuid"]
+        """Record an SMS that would be sent."""
         case_number = case["caseAttributes"]["userFriendlyCaseNumber"]
         self.sms_actions.append({
             "cpr": cpr,
@@ -132,20 +122,16 @@ class DryRunSink:  # pylint: disable=too-many-instance-attributes
             "reason": reason,
         })
         self._say(f"[sag {case_number}] SMS ({language}) → {first_name} ({util.mask_cpr(cpr)}) — {reason}")
-        # Mirrors RealActionsSink.send_sms: one Nova note per send_sms call.
-        note_details = f"Årsag: {reason}" if reason else "SMS sendt til borgeren vedrørende ukendt adresse."
-        self.add_nova_note(case_uuid, "SMS sendt", note_details)
 
     def send_reminder(self, case: dict, cpr: str, first_name: str, step: int, *,
                       nemsms_registered: bool = False):
-        """Record a reminder that would be sent, plus the Nova notes prod would write.
+        """Record a reminder that would be sent.
 
         Simulates the delivery outcome via `mock_digital_post_registered[cpr]`
         (defaults to True). When True, one NemSMS action per language is also
         recorded if `nemsms_registered`. When False, no NemSMS is recorded — the
         letter could not be delivered.
         """
-        case_uuid = case["common"]["uuid"]
         case_number = case["caseAttributes"]["userFriendlyCaseNumber"]
         delivered = self.mock_digital_post_registered.get(cpr, True)
         self.reminder_actions.append({
@@ -157,15 +143,6 @@ class DryRunSink:  # pylint: disable=too-many-instance-attributes
         })
         status = "Rykker" if delivered else "Ikke sendt: Rykker"
         self._say(f"[sag {case_number}] {status} {step} → {first_name} ({util.mask_cpr(cpr)})")
-        # Mirrors RealActionsSink.send_reminder: a reminder note is always added
-        # (title carries "Ikke sendt: " when delivery failed).
-        reminder_title = f"Rykker {step} sendt" if delivered else f"Ikke sendt: Rykker {step} sendt"
-        reminder_details = (
-            f"Rykker {step} er blevet sendt til borgeren vedrørende ukendt adresse."
-            if delivered
-            else f"Rykker {step} blev IKKE sendt via digital post. Brevet er uploadet til sagen."
-        )
-        self.add_nova_note(case_uuid, reminder_title, reminder_details)
 
         if delivered and nemsms_registered:
             for lang in ("da", "en"):
@@ -176,12 +153,6 @@ class DryRunSink:  # pylint: disable=too-many-instance-attributes
                     "reason": f"Notifikation om at Rykker {step} er leveret via digital post",
                 })
             self._say(f"  ↳ NemSMS-notifikation om brev (da+en) → {first_name}")
-            # Mirrors RealActionsSink: one SMS-sendt note for the da+en pair (not two).
-            self.add_nova_note(
-                case_uuid,
-                "SMS sendt",
-                f"Årsag: Notifikation om at Rykker {step} er leveret via digital post",
-            )
 
     def update_queue(self, encrypted_ref: str, digital_post: bool, nemsms: bool, case_uuid: str):
         """Record a queue update that would be performed."""

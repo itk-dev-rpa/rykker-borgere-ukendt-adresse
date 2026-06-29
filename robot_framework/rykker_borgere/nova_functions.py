@@ -189,7 +189,7 @@ def get_latest_reminder_info(case_uuid: str, nova_access: NovaAccess) -> tuple[i
         - step_number is 0 if no reminders have been sent, otherwise the number from the latest reminder
         - last_reminder_date is None if no reminders sent, otherwise ISO format date string
     """
-    notes = nova_notes.get_notes(case_uuid, nova_access, 0, 500)
+    notes = nova_notes.get_notes(case_uuid, nova_access)
 
     latest_step = 0
     latest_date = None
