@@ -129,8 +129,8 @@ def test_get_notes_single_batch(mock_get_notes):
 
 @patch("robot_framework.rykker_borgere.nova_functions.nova_notes.get_notes")
 def test_latest_reminder_info_handles_case_without_notes(mock_get_notes):
-    """A case with no journal notes (library raises KeyError) yields step 0, no crash."""
-    mock_get_notes.side_effect = KeyError("journalNotes")
+    """A case with no journal notes (library returns an empty result) yields step 0, no crash."""
+    mock_get_notes.return_value = ()
 
     step, last_date = nova_functions.get_latest_reminder_info("case-uuid-123", _nova_access())
 

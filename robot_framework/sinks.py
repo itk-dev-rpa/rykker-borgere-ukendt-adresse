@@ -106,7 +106,6 @@ class DryRunSink:  # pylint: disable=too-many-instance-attributes
         self.sms_actions = []
         self.reminder_actions = []
         self.queue_updates = []
-        self.nova_notes = []
         self.verbose = verbose
         mock_state = mock_state or {}
         self.mock_queue_state = mock_state.get("queue", {})
@@ -194,14 +193,6 @@ class DryRunSink:  # pylint: disable=too-many-instance-attributes
         })
         self._say(f"Queue: digital_post={digital_post}, nemsms={nemsms}")
 
-    def add_nova_note(self, case_uuid: str, note_type: str, details: str):
-        """Record a Nova note that would be added."""
-        self.nova_notes.append({
-            "case_uuid": case_uuid,
-            "note_type": note_type,
-            "details": details,
-        })
-
     def print_report(self, orchestrator_connection: OrchestratorConnection):
         """Print a detailed dry-run report."""
         orchestrator_connection.log_info("=" * 80)
@@ -229,13 +220,6 @@ class DryRunSink:  # pylint: disable=too-many-instance-attributes
             orchestrator_connection.log_info(
                 f"  - Ref: {upd['encrypted_ref']} | digital_post={upd['digital_post']} | nemsms={upd['nemsms']} | case_uuid={upd['case_uuid']}"
             )
-
-        orchestrator_connection.log_info(f"\n📝 Nova notater der ville blive tilføjet: {len(self.nova_notes)}")
-        for note in self.nova_notes:
-            orchestrator_connection.log_info(
-                f"  - {note['note_type']} (case {note['case_uuid']}): {note['details']}"
-            )
-
         no_case = self.backoffice_alerts.no_case if self.backoffice_alerts else []
         high_step = self.backoffice_alerts.high_step if self.backoffice_alerts else []
         backoffice_total = len(no_case) + len(high_step)
@@ -250,13 +234,11 @@ class DryRunSink:  # pylint: disable=too-many-instance-attributes
                 f"  - HØJ STEP: Sag {entry['case_number']} | {entry['fornavn']} "
                 f"(CPR: {entry['cpr']}) | step {entry['step']}"
             )
-
         orchestrator_connection.log_info("\n" + "=" * 80)
         orchestrator_connection.log_info("OPSUMMERING")
         orchestrator_connection.log_info("=" * 80)
         orchestrator_connection.log_info(f"Ville have sendt {len(self.sms_actions)} SMS")
         orchestrator_connection.log_info(f"Ville have sendt {len(self.reminder_actions)} rykkere")
         orchestrator_connection.log_info(f"Ville have opdateret {len(self.queue_updates)} queue elementer")
-        orchestrator_connection.log_info(f"Ville have tilføjet {len(self.nova_notes)} Nova notater")
         orchestrator_connection.log_info(f"Ville have inkluderet {backoffice_total} borgere i backoffice-mail")
         orchestrator_connection.log_info("=" * 80)
