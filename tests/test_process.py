@@ -41,13 +41,11 @@ def test_new_case_recent_case_date_no_action_no_note(monkeypatch, orchestrator, 
     _ = fixed_now, fake_case
     # Arrange: baseline derives from caseDate (recent, set in conftest default)
     from robot_framework.rykker_borgere import service_platform_functions as sp
-    # Ensure registration status doesn't trigger SMS
     monkeypatch.setattr(sp, "check_registration_status", lambda cpr, acc: (False, False))
 
     tracker = DryRunSink(mock_state={})
     citizen = {"CPR": "0101011234", "Fornavn": "Ada"}
 
-    # Act
     sms_sent, reminder_sent = handle_citizen(
         citizen=citizen,
         nova_access=None,
@@ -73,6 +71,7 @@ def test_old_case_date_triggers_immediate_rykker1(monkeypatch, orchestrator, fix
             "userFriendlyCaseNumber": "CASE-0001",
             "caseDate": (fixed_now - timedelta(days=20)).isoformat(),
         },
+        "state": {"progressState": "Opstaaet"},
     }
     monkeypatch.setattr(nf, "get_cases_by_kle_and_cpr", lambda access, kle, cpr: [old_case])
 
@@ -101,6 +100,7 @@ def test_missing_case_date_falls_back_safely(monkeypatch, orchestrator, fixed_no
     no_date_case = {
         "common": {"uuid": "case-uuid-123"},
         "caseAttributes": {"userFriendlyCaseNumber": "CASE-0001"},
+        "state": {"progressState": "Opstaaet"},
     }
     monkeypatch.setattr(nf, "get_cases_by_kle_and_cpr", lambda access, kle, cpr: [no_date_case])
 

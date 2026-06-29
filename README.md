@@ -17,9 +17,10 @@ For every citizen returned by the SQL query in [config.SQL_QUERY](robot_framewor
      the 7-day window before the next reminder), send 2 informational SMS
      (Danish + English).
 4. Determine where the case is in the reminder schedule:
-   - No reminder note yet → record a "Rykker 0" baseline note.
-   - Otherwise → if 14 days have passed since baseline (or 30 days since the
-     latest reminder), send the next reminder letter.
+   - No reminder note yet → use the case's own `caseDate` (Sagsdato) as the
+     anchor; no baseline note is created.
+   - If 14 days have passed since `caseDate` (or 30 days since the latest
+     reminder note for step >= 1), send the next reminder letter.
 5. Persist the new status in the queue.
 
 All side effects (SMS, queue updates, reminder letters, Nova notes) flow
@@ -50,7 +51,7 @@ Key constants live in [robot_framework/config.py](robot_framework/config.py):
 | `SQL_CONN_STRING` / `SQL_QUERY` | DWH connection + query for citizens with unknown address |
 | `KLE_NUMBER` | Folkeregistrering KLE used to find Nova cases |
 | `QUEUE_NAME` | OpenOrchestrator queue used to track per-citizen status |
-| `REMINDER_INITIAL_INTERVAL_DAYS` (14) | Wait between Rykker 0 baseline and Rykker 1 |
+| `REMINDER_INITIAL_INTERVAL_DAYS` (14) | Wait between case opening (caseDate) and Rykker 1 |
 | `REMINDER_FOLLOWUP_INTERVAL_DAYS` (30) | Wait between subsequent reminders |
 | `SUPPRESS_SMS_WINDOW_DAYS` (7) | Don't send NemSMS-change SMS within N days of next reminder |
 | `LETTER_DEADLINE_DAYS` (30) | Deadline written into the reminder letter |
@@ -119,7 +120,7 @@ For full end-to-end verification in the OpenOrchestrator environment:
 ### Simulating previous state for dry-run
 
 To dry-run scenarios where citizens have already been processed before
-(e.g. "what happens 15 days after a Rykker 0 baseline?"), point
+(e.g. "what happens 15 days after a case was opened?"), point
 `DRY_RUN_STATE_FILE` at a JSON file:
 
 ```json
