@@ -58,10 +58,18 @@ def orchestrator():
 
 @pytest.fixture
 def fake_case():
-    """Provide a minimal Nova case structure used by the process functions."""
+    """Provide a minimal Nova case structure used by the process functions.
+
+    caseDate is set 5 days before the fixed_now used in tests, so the default
+    case is too fresh for Rykker 1 (14-day window not met) — tests that want
+    the window-met scenario override via mock_nova_reminders or feed an explicit
+    baseline_date to handle_case.
+    """
     return {
         "common": {"uuid": "case-uuid-123"},
-        "caseAttributes": {"userFriendlyCaseNumber": "CASE-0001"},
+        # caseDate is 7 days before fixed_now (2026-04-27): recent enough to trigger no action by default.
+        "caseAttributes": {"userFriendlyCaseNumber": "CASE-0001", "caseDate": "2026-04-20T09:00:00"},
+        "state": {"progressState": "Opstaaet"},
     }
 
 
@@ -131,8 +139,11 @@ def patch_external_functions(monkeypatch, fake_case, fake_party):
     monkeypatch.setattr(nf, "get_cases_by_kle_and_cpr", lambda access, kle, cpr: [fake_case])
     monkeypatch.setattr(nf, "get_single_cpr_case_party", lambda case: fake_party)
 
-    # Baseline helper default: no reminders yet
-    monkeypatch.setattr(nf, "get_next_reminder_baseline", lambda case, access: (0, None, 14))
+    # Baseline helper default: no reminders yet; baseline derives from the case creation date.
+    monkeypatch.setattr(
+        nf, "get_next_reminder_baseline",
+        lambda case, access: (0, case["caseAttributes"].get("caseDate"), 14),
+    )
 
     # Avoid any network side effects; these won't be called in dry-run but patch anyway
     monkeypatch.setattr(nf, "upload_document", lambda *a, **k: None)

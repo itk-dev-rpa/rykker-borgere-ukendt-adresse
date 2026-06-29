@@ -121,10 +121,21 @@ def test_get_notes_single_batch(mock_get_notes):
     """When the first batch already meets `expected_notes`, no further fetch is made."""
     mock_get_notes.return_value = [Mock(spec=JournalNote) for _ in range(100)]
 
-    notes = nova_notes.get_notes("case-uuid-123", Mock(), 0, 500)
+    notes = nova_notes.get_notes("case-uuid-123", Mock())
 
     assert len(notes) == 100
     assert mock_get_notes.call_count == 1
+
+
+@patch("robot_framework.rykker_borgere.nova_functions.nova_notes.get_notes")
+def test_latest_reminder_info_handles_case_without_notes(mock_get_notes):
+    """A case with no journal notes (library returns an empty result) yields step 0, no crash."""
+    mock_get_notes.return_value = ()
+
+    step, last_date = nova_functions.get_latest_reminder_info("case-uuid-123", _nova_access())
+
+    assert step == 0
+    assert last_date is None
 
 
 # ---------------------------------------------------------------------------

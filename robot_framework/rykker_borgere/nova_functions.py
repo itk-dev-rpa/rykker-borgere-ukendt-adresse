@@ -1,6 +1,8 @@
 """Functions for interacting with Nova."""
+import re
 import urllib
 import uuid
+from datetime import datetime
 from typing import Literal, Any
 
 import requests
@@ -117,14 +119,18 @@ def get_cases_by_kle_and_cpr(nova_access: NovaAccess, kle_number: str, cpr: str)
     return response.json().get("cases", [])
 
 
-def add_reminder_note(case_uuid: str, reminder_number: int, nova_access: NovaAccess, caseworker: Caseworker = None) -> str:
-    """Add a journal note to a case documenting that a reminder letter has been sent.
+def add_reminder_note(case_uuid: str, reminder_number: int, nova_access: NovaAccess,
+                      caseworker: Caseworker = None, sent: bool = True) -> str:
+    """Add a journal note to a case documenting a reminder letter.
 
     Args:
         case_uuid: The uuid of the case to add the note to.
         reminder_number: Which reminder this is (1, 2, 3, etc.).
         nova_access: The NovaAccess object used to authenticate.
         caseworker: The caseworker to attribute the note to. Defaults to config.CASEWORKER.
+        sent: True if the letter was delivered via digital post; False if delivery was
+              skipped because the citizen is not registered. When False, the note title is
+              prefixed with "Ikke sendt: " and the body asks for manual follow-up.
 
     Returns:
         The uuid of the created journal note.
@@ -132,8 +138,15 @@ def add_reminder_note(case_uuid: str, reminder_number: int, nova_access: NovaAcc
     if caseworker is None:
         caseworker = config.CASEWORKER
 
-    note_title = f"Rykker {reminder_number} sendt"
-    note_text = f"Rykker {reminder_number} er blevet sendt til borgeren vedrørende ukendt adresse."
+    if sent:
+        note_title = f"Rykker {reminder_number} sendt"
+        note_text = f"Rykker {reminder_number} er blevet sendt til borgeren vedrørende ukendt adresse."
+    else:
+        note_title = f"Ikke sendt: Rykker {reminder_number}"
+        note_text = (
+            f"Rykker {reminder_number} blev IKKE sendt via digital post, da borgeren ikke er tilmeldt. "
+            "Brevet er uploadet til sagen. Manuel opfølgning påkrævet."
+        )
 
     return nova_notes.add_text_note(case_uuid, note_title, note_text, caseworker, approved=False, nova_access=nova_access)
 
@@ -176,26 +189,22 @@ def get_latest_reminder_info(case_uuid: str, nova_access: NovaAccess) -> tuple[i
         - step_number is 0 if no reminders have been sent, otherwise the number from the latest reminder
         - last_reminder_date is None if no reminders sent, otherwise ISO format date string
     """
-    notes = nova_notes.get_notes(case_uuid, nova_access, 0, 500)
+    notes = nova_notes.get_notes(case_uuid, nova_access)
 
     latest_step = 0
     latest_date = None
 
     for note in notes:
-        # Look for notes with title pattern "Rykker X sendt"
-        if note.title and note.title.startswith("Rykker ") and note.title.endswith(" sendt"):
-            try:
-                # Extract the step number from the title
-                step_str = note.title.replace("Rykker ", "").replace(" sendt", "")
-                step = int(step_str)
-
-                # Keep track of the highest step number found
-                if step > latest_step:
-                    latest_step = step
-                    latest_date = note.journal_date
-            except ValueError:
-                # Skip notes that don't match the expected format
-                continue
+        # Match both "Rykker X sendt" and "Ikke sendt: Rykker X sendt" — the latter is
+        # added when the letter could not be delivered via digital post, but the step
+        # counter must still advance so we don't retry the same reminder every run.
+        match = re.match(r"^(?:Ikke sendt: )?Rykker (\d+) sendt$", note.title or "")
+        if not match:
+            continue
+        step = int(match.group(1))
+        if step > latest_step:
+            latest_step = step
+            latest_date = note.journal_date
 
     return (latest_step, latest_date)
 
@@ -211,27 +220,31 @@ def get_single_cpr_case_party(case: dict) -> CaseParty | None:
     return party
 
 
-def get_latest_sms_info(case_uuid: str, nova_access: NovaAccess) -> str | None:
-    """Return the ISO date of the latest "SMS sendt" note, or None if none found."""
-    notes = nova_notes.get_notes(case_uuid, nova_access, 0, 500)
-    latest_date = None
-    for note in notes:
-        if note.title and note.title.strip() == "SMS sendt":
-            # Keep the latest by journal_date ordering (notes are typically returned newest first, but be safe)
-            if latest_date is None or (note.journal_date and note.journal_date > latest_date):
-                latest_date = note.journal_date
-    return latest_date
+def _normalize_iso_date(value: str | None) -> str | None:
+    """Return a naive ISO date string parseable by datetime.fromisoformat, or None.
+
+    Nova may return dates with a timezone (offset or trailing 'Z'). Downstream the
+    baseline is compared against a naive datetime.now(), so any timezone is dropped
+    to keep the comparison valid. Returns None for empty or unparseable input.
+    """
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed.replace(tzinfo=None).isoformat()
 
 
 def get_next_reminder_baseline(case: dict, nova_access: NovaAccess) -> tuple[int, str | None, int]:
-    """Compute next reminder baseline and interval based solely on reminder notes.
+    """Compute next reminder baseline and interval for a case.
 
     Returns a tuple of (step_sent, baseline_iso_date, interval_days) where:
     - step_sent: how many reminder letters have already been sent (>= 0). Parsed from notes titled
-      "Rykker X sendt" where X is an integer (0, 1, 2, ...).
+      "Rykker X sendt" where X is an integer (1, 2, ...); a legacy "Rykker 0 sendt" note counts as 0.
     - baseline_iso_date: ISO date string to measure waiting time from for the NEXT step
-        * If step_sent == 0: baseline is the journal date of the latest "Rykker 0 sendt" note if it exists,
-          otherwise None (meaning baseline has not yet been established).
+        * If step_sent == 0: baseline is the case creation date (caseDate), or None if it is
+          missing/unparseable (the caller applies a safe fallback).
         * If step_sent >= 1: baseline is the journal date of the latest reminder note (highest X).
     - interval_days: 14 when step_sent == 0 (waiting to send step 1); otherwise 30 for subsequent steps.
     """
@@ -239,10 +252,10 @@ def get_next_reminder_baseline(case: dict, nova_access: NovaAccess) -> tuple[int
     step_sent, last_reminder_date = get_latest_reminder_info(case_uuid, nova_access)
 
     if step_sent == 0:
-        # When no reminder notes exist at all, last_reminder_date will be None. In that case the caller should
-        # create a step 0 note (in non-dry-run) to establish the baseline, and wait 14 days from that date.
+        # No real reminder sent yet: measure the wait from when the case was created. Any legacy
+        # "Rykker 0 sendt" note is ignored for timing (it parses as step 0 and is not counted).
         interval_days = 14
-        baseline = last_reminder_date  # date of step 0 if it exists; else None
+        baseline = _normalize_iso_date(case.get("caseAttributes", {}).get("caseDate"))
         return step_sent, baseline, interval_days
 
     # For step_sent >= 1, use the date of the last reminder note as baseline and wait 30 days

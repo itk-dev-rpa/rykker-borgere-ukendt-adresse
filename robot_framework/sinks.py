@@ -28,12 +28,6 @@ class RealActionsSink:
         self._nova = nova_access
         self._kombit = kombit_access
 
-    def establish_baseline(self, *, case_uuid: str, step: int = 0) -> None:
-        """Create a Nova reminder baseline (Rykker 0) in production."""
-        if self._nova is None:
-            raise RuntimeError("RealActionsSink requires NovaAccess for baseline establishment")
-        nova_functions.add_reminder_note(case_uuid, step, self._nova)
-
     def send_sms(self, case: dict, cpr: str, _first_name: str, *, language: str, reason: str = "") -> None:
         """Send an SMS via Serviceplatformen and add a Nova note documenting it."""
         if self._kombit is None:
@@ -52,33 +46,49 @@ class RealActionsSink:
             raise RuntimeError("RealActionsSink requires OrchestratorConnection for queue updates")
         util.update_queue_element(self._orc, config.QUEUE_NAME, encrypted_ref, digital_post, nemsms, case_uuid)
 
-    def add_nova_note(self, case_uuid: str, note_type: str, details: str) -> None:
-        """Add a generic text note to the Nova case (if Nova access is available)."""
-        if self._nova is None:
-            return
-        nova_functions.nova_notes.add_text_note(
-            case_uuid, note_type, details, nova_functions.config.CASEWORKER,
-            approved=False, nova_access=self._nova,
-        )
+    def send_reminder(self, case: dict, cpr: str, first_name: str, step: int, *,
+                      nemsms_registered: bool = False) -> None:
+        """Send reminder letter and add Nova note in production.
 
-    def send_reminder(self, case: dict, cpr: str, first_name: str, step: int) -> None:
-        """Send reminder letter and add Nova note in production."""
+        The letter is always uploaded to Nova so the caseworker has access to it,
+        regardless of whether digital post delivery succeeds. If the citizen is not
+        registered for digital post, the journal note is titled "Ikke sendt: Rykker X
+        sendt" and the step counter still advances (so the robot does not retry the
+        same reminder every Monday indefinitely).
+        """
         if self._nova is None or self._kombit is None:
             raise RuntimeError("RealActionsSink requires NovaAccess and KombitAccess to send reminders")
 
         case_uuid = case["common"]["uuid"]
         case_number = case["caseAttributes"]["userFriendlyCaseNumber"]
         template_to_use = f"rykker_borgere/templates/Rykker {step} - Ukendt adresse.docx"
-        letter_name = f"Rykker {step} - Adresse.docx"
+        letter_name = f"{first_name}, din adresse er ukendt"
         deadline_date = datetime.now() + timedelta(days=config.LETTER_DEADLINE_DAYS)
         letter_path = util.fill_template(template_to_use, f"tmp/{letter_name}", first_name, deadline_date, case_number)
         pdf_path = util.convert_docx_to_pdf(letter_path, "tmp/")
         nova_functions.upload_document(self._nova, str(pdf_path), letter_name, case_uuid)
-        service_platform_functions.send_digital_post(self._kombit, str(pdf_path), cpr)
-        nova_functions.add_reminder_note(case_uuid, step, self._nova)
+
+        delivered = service_platform_functions.send_digital_post(self._kombit, str(pdf_path), cpr)
+        nova_functions.add_reminder_note(case_uuid, step, self._nova, sent=delivered)
+
+        if delivered and nemsms_registered:
+            for lang in ("da", "en"):
+                try:
+                    service_platform_functions.send_sms(self._kombit, cpr, lang)
+                except Exception as e:  # pylint: disable=broad-exception-caught
+                    # Letter is already delivered — SMS is a bonus. Log and continue.
+                    if self._orc is not None:
+                        self._orc.log_error(
+                            f"NemSMS-notifikation om Rykker {step} for sag {case_number} fejlede ({lang}): {str(e)}"
+                        )
+            nova_functions.add_sms_note(
+                case_uuid=case_uuid,
+                nova_access=self._nova,
+                reason=f"Notifikation om at Rykker {step} er leveret via digital post",
+            )
 
 
-class DryRunSink:
+class DryRunSink:  # pylint: disable=too-many-instance-attributes
     """Records actions that would be performed in a dry run."""
 
     is_dry_run: bool = True
@@ -87,11 +97,16 @@ class DryRunSink:
         self.sms_actions = []
         self.reminder_actions = []
         self.queue_updates = []
-        self.nova_notes = []
         self.verbose = verbose
         mock_state = mock_state or {}
         self.mock_queue_state = mock_state.get("queue", {})
         self.mock_nova_reminders = mock_state.get("nova_reminders", {})
+        # Lets tests exercise the "not registered for digital post" branch without
+        # hitting the Service Platform. Defaults to True when a CPR is not specified,
+        # which preserves the existing test behavior.
+        self.mock_digital_post_registered = mock_state.get("digital_post_registered", {})
+        # Assigned by process() before print_report is called. Holds a BackofficeAlerts.
+        self.backoffice_alerts = None
 
     def _say(self, msg: str) -> None:
         if self.verbose:
@@ -108,16 +123,36 @@ class DryRunSink:
         })
         self._say(f"[sag {case_number}] SMS ({language}) → {first_name} ({util.mask_cpr(cpr)}) — {reason}")
 
-    def send_reminder(self, case: dict, cpr: str, first_name: str, step: int):
-        """Record a reminder that would be sent."""
+    def send_reminder(self, case: dict, cpr: str, first_name: str, step: int, *,
+                      nemsms_registered: bool = False):
+        """Record a reminder that would be sent.
+
+        Simulates the delivery outcome via `mock_digital_post_registered[cpr]`
+        (defaults to True). When True, one NemSMS action per language is also
+        recorded if `nemsms_registered`. When False, no NemSMS is recorded — the
+        letter could not be delivered.
+        """
         case_number = case["caseAttributes"]["userFriendlyCaseNumber"]
+        delivered = self.mock_digital_post_registered.get(cpr, True)
         self.reminder_actions.append({
             "cpr": cpr,
             "first_name": first_name,
             "case_number": case_number,
             "step": step,
+            "delivered": delivered,
         })
-        self._say(f"[sag {case_number}] Rykker {step} → {first_name} ({util.mask_cpr(cpr)})")
+        status = "Rykker" if delivered else "Ikke sendt: Rykker"
+        self._say(f"[sag {case_number}] {status} {step} → {first_name} ({util.mask_cpr(cpr)})")
+
+        if delivered and nemsms_registered:
+            for lang in ("da", "en"):
+                self.sms_actions.append({
+                    "cpr": cpr,
+                    "first_name": first_name,
+                    "language": lang,
+                    "reason": f"Notifikation om at Rykker {step} er leveret via digital post",
+                })
+            self._say(f"  ↳ NemSMS-notifikation om brev (da+en) → {first_name}")
 
     def update_queue(self, encrypted_ref: str, digital_post: bool, nemsms: bool, case_uuid: str):
         """Record a queue update that would be performed."""
@@ -128,19 +163,6 @@ class DryRunSink:
             "case_uuid": case_uuid,
         })
         self._say(f"Queue: digital_post={digital_post}, nemsms={nemsms}")
-
-    def add_nova_note(self, case_uuid: str, note_type: str, details: str):
-        """Record a Nova note that would be added."""
-        self.nova_notes.append({
-            "case_uuid": case_uuid,
-            "note_type": note_type,
-            "details": details,
-        })
-
-    def establish_baseline(self, *, case_uuid: str, step: int = 0):
-        """Record that we would establish a baseline (Rykker 0) now."""
-        self.add_nova_note(case_uuid, "Rykker note", f"Rykker {step} (baseline)")
-        self._say(f"Baseline: Rykker {step}")
 
     def print_report(self, orchestrator_connection: OrchestratorConnection):
         """Print a detailed dry-run report."""
@@ -159,8 +181,9 @@ class DryRunSink:
         orchestrator_connection.log_info(f"\n📨 Rykkere der ville blive sendt: {len(self.reminder_actions)}")
         for action in self.reminder_actions:
             masked_cpr = util.mask_cpr(action['cpr'])
+            label = "Rykker" if action.get('delivered', True) else "Ikke sendt: Rykker"
             orchestrator_connection.log_info(
-                f"  - Sag {action['case_number']}: {action['first_name']} (CPR: {masked_cpr}) - Rykker {action['step']}"
+                f"  - Sag {action['case_number']}: {action['first_name']} (CPR: {masked_cpr}) - {label} {action['step']}"
             )
 
         orchestrator_connection.log_info(f"\n🔄 Queue opdateringer der ville blive udført: {len(self.queue_updates)}")
@@ -168,18 +191,25 @@ class DryRunSink:
             orchestrator_connection.log_info(
                 f"  - Ref: {upd['encrypted_ref']} | digital_post={upd['digital_post']} | nemsms={upd['nemsms']} | case_uuid={upd['case_uuid']}"
             )
-
-        orchestrator_connection.log_info(f"\n📝 Nova notater der ville blive tilføjet: {len(self.nova_notes)}")
-        for note in self.nova_notes:
+        no_case = self.backoffice_alerts.no_case if self.backoffice_alerts else []
+        high_step = self.backoffice_alerts.high_step if self.backoffice_alerts else []
+        backoffice_total = len(no_case) + len(high_step)
+        orchestrator_connection.log_info(
+            f"\n📧 Backoffice-mail ville blive sendt: {'JA' if backoffice_total else 'NEJ'} "
+            f"(ingen sag: {len(no_case)}, høj step: {len(high_step)})"
+        )
+        for entry in no_case:
+            orchestrator_connection.log_info(f"  - INGEN SAG: {entry['fornavn']} (CPR: {entry['cpr']})")
+        for entry in high_step:
             orchestrator_connection.log_info(
-                f"  - {note['note_type']} (case {note['case_uuid']}): {note['details']}"
+                f"  - HØJ STEP: Sag {entry['case_number']} | {entry['fornavn']} "
+                f"(CPR: {entry['cpr']}) | step {entry['step']}"
             )
-
         orchestrator_connection.log_info("\n" + "=" * 80)
         orchestrator_connection.log_info("OPSUMMERING")
         orchestrator_connection.log_info("=" * 80)
         orchestrator_connection.log_info(f"Ville have sendt {len(self.sms_actions)} SMS")
         orchestrator_connection.log_info(f"Ville have sendt {len(self.reminder_actions)} rykkere")
         orchestrator_connection.log_info(f"Ville have opdateret {len(self.queue_updates)} queue elementer")
-        orchestrator_connection.log_info(f"Ville have tilføjet {len(self.nova_notes)} Nova notater")
+        orchestrator_connection.log_info(f"Ville have inkluderet {backoffice_total} borgere i backoffice-mail")
         orchestrator_connection.log_info("=" * 80)
