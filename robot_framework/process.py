@@ -31,13 +31,15 @@ class BackofficeAlerts:
         return not self.no_case and not self.high_step
 
 
-def process(orchestrator_connection: OrchestratorConnection, action_sink: DryRunSink | None = None) -> None:
+def process(orchestrator_connection: OrchestratorConnection, action_sink: DryRunSink | None = None,
+            limit: int | None = None) -> None:
     """Do the primary process of the robot.
 
     Args:
         orchestrator_connection: OpenOrchestrator connection.
         action_sink: Sink used to collect/log actions during run. When None, a RealActionsSink
                      is constructed and the run performs real side-effects.
+        limit: Optional cap on how many citizens to process this run. When None, all are processed.
     """
     orchestrator_connection.log_trace("Running process.")
     itk_dev_event_log.setup_logging(orchestrator_connection.get_constant(config.EVENT_LOG_CONN).value)
@@ -54,6 +56,10 @@ def process(orchestrator_connection: OrchestratorConnection, action_sink: DryRun
 
     citizens_with_unknown_address = get_citizens_from_sql(config.SQL_CONN_STRING)
     orchestrator_connection.log_info(f"Found {len(citizens_with_unknown_address)} citizens with unknown address.")
+
+    if limit is not None:
+        citizens_with_unknown_address = citizens_with_unknown_address[:limit]
+        orchestrator_connection.log_info(f"Batch limit active: processing at most {limit} citizens this run.")
 
     sms_sent_count = 0
     reminders_sent_count = 0

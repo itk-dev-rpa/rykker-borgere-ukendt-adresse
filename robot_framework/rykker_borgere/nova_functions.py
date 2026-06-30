@@ -1,4 +1,5 @@
 """Functions for interacting with Nova."""
+import os
 import re
 import urllib
 import uuid
@@ -14,10 +15,17 @@ from robot_framework import config
 
 
 def upload_document(nova_access: NovaAccess, document_path: str, document_title: str, case_id: str):
-    """Upload a document to Nova and attach it to a case."""
+    """Upload a document to Nova and attach it to a case.
+
+    The upload filename is taken from the file on disk so it keeps its real
+    extension (e.g. .pdf); the shared library uses it to detect the MIME type.
+    Passing an extension-less name makes Nova store the file as application/octet-stream
+    (a .bin file). The Nova document title stays the clean, extension-less document_title.
+    """
+    file_name = os.path.basename(document_path)
     with open(document_path, 'rb') as file:
-        document_id = nova_documents.upload_document(file, document_title, nova_access)
-        nova_doc = Document(uuid=document_id, title=document_title, sensitivity="Følsomme", document_type="Udgående", description="Rykker sendt til borger omkring ukendt adresse.", approved=False)
+        document_id = nova_documents.upload_document(file, file_name, nova_access)
+        nova_doc = Document(uuid=document_id, title=document_title, sensitivity="Følsomme", document_type="Udgående", description="Rykker sendt til borger omkring ukendt adresse.", approved=False, caseworker=config.CASEWORKER)
         nova_documents.attach_document_to_case(case_id, nova_doc, nova_access)
 
 
