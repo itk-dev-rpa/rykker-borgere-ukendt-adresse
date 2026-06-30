@@ -61,12 +61,12 @@ class RealActionsSink:
 
         case_uuid = case["common"]["uuid"]
         case_number = case["caseAttributes"]["userFriendlyCaseNumber"]
-        template_to_use = str(util.TEMPLATES_DIR / f"Rykker {step} - Ukendt adresse.docx")
+        template_to_use = str(config.TEMPLATES_DIR / f"Rykker {step} - Ukendt adresse.docx")
         letter_name = f"{first_name}, din adresse er ukendt"
         deadline_date = datetime.now() + timedelta(days=config.LETTER_DEADLINE_DAYS)
-        util.TMP_DIR.mkdir(exist_ok=True)
-        letter_path = util.fill_template(template_to_use, str(util.TMP_DIR / letter_name), first_name, deadline_date, case_number)
-        pdf_path = util.convert_docx_to_pdf(letter_path, str(util.TMP_DIR))
+        config.TMP_DIR.mkdir(exist_ok=True)
+        letter_path = util.fill_template(template_to_use, str(config.TMP_DIR / letter_name), first_name, deadline_date, case_number)
+        pdf_path = util.convert_docx_to_pdf(letter_path, str(config.TMP_DIR))
         nova_functions.upload_document(self._nova, str(pdf_path), letter_name, case_uuid)
 
         delivered = service_platform_functions.send_digital_post(self._kombit, str(pdf_path), cpr)

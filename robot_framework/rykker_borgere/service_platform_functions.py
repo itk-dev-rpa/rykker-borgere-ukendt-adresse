@@ -11,7 +11,6 @@ from OpenOrchestrator.orchestrator_connection.connection import OrchestratorConn
 from requests.exceptions import HTTPError, ConnectionError as RequestsConnectionError, Timeout
 
 from robot_framework import config
-from robot_framework.rykker_borgere import util
 
 
 def get_kombit_access(orchestrator_connection: OrchestratorConnection):
@@ -77,7 +76,7 @@ def send_sms(kombit_access: KombitAccess, recipient_cpr: str, language: str = "d
     )
 
     # Load appropriate SMS text based on language
-    sms_file = util.TEMPLATES_DIR / ("sms_text_da.txt" if language == "da" else "sms_text_en.txt")
+    sms_file = config.TEMPLATES_DIR / ("sms_text_da.txt" if language == "da" else "sms_text_en.txt")
     with open(sms_file, "r", encoding="utf-8") as file:
         sms_text = file.read()
 

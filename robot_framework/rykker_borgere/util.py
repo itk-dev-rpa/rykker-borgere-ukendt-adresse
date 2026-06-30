@@ -12,13 +12,6 @@ from itk_dev_shared_components.kmd_nova.nova_objects import JournalNote
 from robot_framework import config
 
 
-# Bundled assets live next to the code. Resolve them against this file so paths work
-# regardless of the process working directory — the same approach initialize.py uses for
-# the dry-run state file (see README: "Relative paths are resolved against robot_framework/").
-TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"   # robot_framework/rykker_borgere/templates
-TMP_DIR = Path(__file__).resolve().parent.parent / "tmp"        # robot_framework/tmp
-
-
 def fill_template(template_path: str, output_path: str, name: str, date: datetime, case_number: str) -> Path:
     """Fill a template with the given context."""
     context = {
