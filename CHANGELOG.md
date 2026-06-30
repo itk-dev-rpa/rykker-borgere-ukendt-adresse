@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.1.2 - 31/06/2026
+
+- Fixed upload filename derived from the file's real .pdf basename
+- Changed caseworker type to user
+- Added batch limit {"limit": N} via OO process arguments
+- Hardened the upload_document call with keyword args, and made operational logs English
+
 ## 1.1.1 - 30/06/2026
 
 - Added init to project
