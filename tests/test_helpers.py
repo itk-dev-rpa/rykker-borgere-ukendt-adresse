@@ -227,7 +227,7 @@ def test_send_sms_loads_danish_template_by_default(mock_file, mock_send_message,
     assert service_platform_functions.send_sms(Mock(), "0101011234") is True
     mock_send_message.assert_called_once()
     mock_file.assert_called_once_with(
-        "rykker_borgere/templates/sms_text_da.txt", "r", encoding="utf-8",
+        config.TEMPLATES_DIR / "sms_text_da.txt", "r", encoding="utf-8",
     )
 
 
@@ -241,5 +241,5 @@ def test_send_sms_loads_english_template_when_language_en(mock_file, mock_send_m
     assert service_platform_functions.send_sms(Mock(), "0101011234", language="en") is True
     mock_send_message.assert_called_once()
     mock_file.assert_called_once_with(
-        "rykker_borgere/templates/sms_text_en.txt", "r", encoding="utf-8",
+        config.TEMPLATES_DIR / "sms_text_en.txt", "r", encoding="utf-8",
     )

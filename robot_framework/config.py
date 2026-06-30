@@ -1,4 +1,6 @@
 """This module contains configuration constants used across the framework"""
+from pathlib import Path
+
 from itk_dev_shared_components.kmd_nova.nova_objects import Caseworker
 
 # The number of times the robot retries on an error before terminating.
@@ -77,3 +79,9 @@ CASEWORKER = Caseworker(
 )
 
 PATH_TO_LIBREOFFICE = "C:/Program Files/LibreOffice/program/soffice.exe"
+
+# Bundled assets are resolved against this file's location so paths work regardless
+# of the process working directory (the same approach initialize.py uses for the
+# dry-run state file). config.py lives in robot_framework/, so parent is that dir.
+TEMPLATES_DIR = Path(__file__).resolve().parent / "rykker_borgere" / "templates"
+TMP_DIR = Path(__file__).resolve().parent / "tmp"
