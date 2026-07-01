@@ -21,14 +21,9 @@ Required environment variables (typically loaded from a local .env file):
     OpenOrchestratorKey
 """
 import argparse
-import os
-import sys
-from uuid import uuid4
 
-from dotenv import load_dotenv
-
-from OpenOrchestrator.orchestrator_connection.connection import OrchestratorConnection
 from itk_dev_shared_components.kmd_nova.authentication import NovaAccess
+from local_oo import build_local_connection
 
 from robot_framework import process
 from robot_framework.rykker_borgere import service_platform_functions
@@ -49,16 +44,8 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    load_dotenv()
-
-    conn_string = os.getenv("OpenOrchestratorConnString")
-    crypto_key = os.getenv("OpenOrchestratorKey")
-    if not conn_string or not crypto_key:
-        print(
-            "ERROR: Set OpenOrchestratorConnString and OpenOrchestratorKey "
-            "in the environment or a .env file in the project root.",
-            file=sys.stderr,
-        )
+    oc = build_local_connection("Rykker borgere ukendt adresse (LIVE-LOCAL)")
+    if oc is None:
         return 1
 
     limit = None if args.limit == 0 else args.limit
@@ -66,15 +53,6 @@ def main() -> int:
         f"LIVE run: real side effects WILL be performed for up to "
         f"{'ALL' if limit is None else limit} citizen(s).",
         flush=True,
-    )
-
-    oc = OrchestratorConnection(
-        "Rykker borgere ukendt adresse (LIVE-LOCAL)",
-        conn_string,
-        crypto_key,
-        "",
-        "",
-        uuid4(),
     )
 
     # Build the real sink explicitly (mirrors process() internals) so we can enable

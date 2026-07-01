@@ -19,11 +19,8 @@ Only the *write* operations are skipped.
 """
 import argparse
 import os
-import sys
-from uuid import uuid4
-from dotenv import load_dotenv
 
-from OpenOrchestrator.orchestrator_connection.connection import OrchestratorConnection  # noqa: E402
+from local_oo import build_local_connection
 
 from robot_framework import process
 from robot_framework.initialize import activate_dryrun
@@ -38,29 +35,15 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    load_dotenv()
+    oc = build_local_connection("Rykker borgere ukendt adresse (DRY-RUN)")
+    if oc is None:
+        return 1
 
+    # Set after the connection is built (which loads .env) but before activate_dryrun
+    # reads DRY_RUN_STATE_FILE, so an explicit --state wins over any .env value.
     if args.state:
         os.environ["DRY_RUN_STATE_FILE"] = args.state
 
-    conn_string = os.getenv("OpenOrchestratorConnString")
-    crypto_key = os.getenv("OpenOrchestratorKey")
-    if not conn_string or not crypto_key:
-        print(
-            "ERROR: Set OpenOrchestratorConnString and OpenOrchestratorKey "
-            "in the environment or a .env file in the project root.",
-            file=sys.stderr,
-        )
-        return 1
-
-    oc = OrchestratorConnection(
-        "Rykker borgere ukendt adresse (DRY-RUN)",
-        conn_string,
-        crypto_key,
-        "",
-        "",
-        uuid4()
-    )
     sink = activate_dryrun(oc)
     sink.verbose = True
     process.process(oc, action_sink=sink)
