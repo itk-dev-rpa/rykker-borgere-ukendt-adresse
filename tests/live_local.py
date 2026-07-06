@@ -20,6 +20,8 @@ Required environment variables (typically loaded from a local .env file):
     OpenOrchestratorConnString
     OpenOrchestratorKey
 """
+# This dev harness intentionally mirrors dryrun_local.py; ignore cross-file duplication.
+# pylint: disable=duplicate-code
 import argparse
 import json
 

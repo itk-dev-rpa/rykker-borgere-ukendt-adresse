@@ -17,6 +17,8 @@ Note: dry-run still requires valid Nova and Kombit credentials in
 OpenOrchestrator, since case lookups and registration checks are real.
 Only the *write* operations are skipped.
 """
+# This dev harness intentionally mirrors live_local.py; ignore cross-file duplication.
+# pylint: disable=duplicate-code
 import argparse
 import os
 
