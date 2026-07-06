@@ -67,9 +67,15 @@ class RealActionsSink:
         config.TMP_DIR.mkdir(exist_ok=True)
         letter_path = util.fill_template(template_to_use, str(config.TMP_DIR / letter_name), first_name, deadline_date, case_number)
         pdf_path = util.convert_docx_to_pdf(letter_path, str(config.TMP_DIR))
-        nova_functions.upload_document(self._nova, str(pdf_path), letter_name, case_uuid)
 
         delivered = service_platform_functions.send_digital_post(self._kombit, str(pdf_path), cpr)
+
+        nova_functions.upload_document(
+            nova_access=self._nova,
+            document_path=str(pdf_path),
+            document_title=letter_name,
+            case_id=case_uuid,
+        )
         nova_functions.add_reminder_note(case_uuid, step, self._nova, sent=delivered)
 
         if delivered and nemsms_registered:

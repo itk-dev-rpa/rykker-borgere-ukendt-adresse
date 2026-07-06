@@ -1,4 +1,5 @@
 """This module contains the main process of the robot."""
+import json
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
@@ -54,6 +55,12 @@ def process(orchestrator_connection: OrchestratorConnection, action_sink: DryRun
 
     citizens_with_unknown_address = get_citizens_from_sql(config.SQL_CONN_STRING)
     orchestrator_connection.log_info(f"Found {len(citizens_with_unknown_address)} citizens with unknown address.")
+
+    # Optional batch cap from the OpenOrchestrator process arguments, e.g. {"limit": 5}.
+    if orchestrator_connection.process_arguments:
+        limit = json.loads(orchestrator_connection.process_arguments)["limit"]
+        citizens_with_unknown_address = citizens_with_unknown_address[:limit]
+        orchestrator_connection.log_info(f"Batch limit active: processing at most {limit} citizens this run.")
 
     sms_sent_count = 0
     reminders_sent_count = 0

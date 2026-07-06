@@ -75,7 +75,7 @@ CASEWORKER = Caseworker(
     name='AZRPA78 - Rpabruger Rpa78 - MÅ IKKE SLETTES RITM0283472',
     ident='AZRPA78',
     uuid='a577c0a2-a131-43a5-b4e6-b4f5bb75028f',
-    type='group'
+    type='user'
 )
 
 PATH_TO_LIBREOFFICE = "C:/Program Files/LibreOffice/program/soffice.exe"

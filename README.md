@@ -57,6 +57,11 @@ Key constants live in [robot_framework/config.py](robot_framework/config.py):
 | `LETTER_DEADLINE_DAYS` (30) | Deadline written into the reminder letter |
 | `DRY_RUN_STATE_FILE` | Optional path to a JSON file with simulated state for dry-run |
 
+## Limiting a run (batch size)
+
+Set the OpenOrchestrator trigger's **Process arguments** to `{"limit": N}` to process at most the first
+*N* citizens (SQL order); leave it blank to process all. Applied in [process.process](robot_framework/process.py).
+
 ## Dry-run testing
 
 The robot supports a dry-run mode that performs no side effects: no SMS, no
