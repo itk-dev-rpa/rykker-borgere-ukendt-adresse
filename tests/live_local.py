@@ -21,6 +21,7 @@ Required environment variables (typically loaded from a local .env file):
     OpenOrchestratorKey
 """
 import argparse
+import json
 
 from itk_dev_shared_components.kmd_nova.authentication import NovaAccess
 from local_oo import build_local_connection
@@ -48,10 +49,12 @@ def main() -> int:
     if oc is None:
         return 1
 
-    limit = None if args.limit == 0 else args.limit
+    # Feed the cap through the same process-arguments channel the robot uses live.
+    if args.limit:
+        oc.process_arguments = json.dumps({"limit": args.limit})
     print(
         f"LIVE run: real side effects WILL be performed for up to "
-        f"{'ALL' if limit is None else limit} citizen(s).",
+        f"{'ALL' if not args.limit else args.limit} citizen(s).",
         flush=True,
     )
 
@@ -63,7 +66,7 @@ def main() -> int:
     sink = RealActionsSink(orchestrator=oc, nova_access=nova_access, kombit_access=kombit_access)
     sink.verbose = True
 
-    process.process(oc, action_sink=sink, limit=limit)
+    process.process(oc, action_sink=sink)
     return 0
 
 

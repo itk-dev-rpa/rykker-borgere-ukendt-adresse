@@ -3,7 +3,6 @@
 # This module is not meant to exist next to queue_framework.py in production:
 # pylint: disable=duplicate-code
 
-import json
 import sys
 import os
 
@@ -16,27 +15,6 @@ from robot_framework import process
 from robot_framework import config
 
 
-def _parse_limit(process_arguments: str | None, orchestrator_connection: OrchestratorConnection) -> int | None:
-    """Read an optional positive 'limit' from the OO process arguments JSON.
-
-    The process arguments are a free-form string from OpenOrchestrator. When they contain
-    a JSON object with a positive integer "limit", that caps how many citizens are processed
-    this run. Empty, missing, or invalid input returns None (process all) and is logged.
-    """
-    if not process_arguments or not process_arguments.strip():
-        return None
-    try:
-        limit = json.loads(process_arguments).get("limit")
-    except (ValueError, AttributeError):
-        orchestrator_connection.log_info(f"Could not parse process arguments as JSON: {process_arguments!r}")
-        return None
-    if isinstance(limit, int) and not isinstance(limit, bool) and limit > 0:
-        return limit
-    if limit is not None:
-        orchestrator_connection.log_info(f"Invalid 'limit' in process arguments: {limit!r} (ignored)")
-    return None
-
-
 def main():
     """The entry point for the framework. Should be called as the first thing when running the robot."""
     orchestrator_connection = OrchestratorConnection.create_connection_from_args()
@@ -44,8 +22,6 @@ def main():
 
     orchestrator_connection.log_trace("Robot Framework started.")
     initialize.initialize(orchestrator_connection)
-
-    limit = _parse_limit(orchestrator_connection.process_arguments, orchestrator_connection)
 
     # Determine sink for this run based on env/config (env has priority)
     dry_run_env = os.getenv("DRY_RUN")
@@ -58,7 +34,7 @@ def main():
     for _ in range(config.MAX_RETRY_COUNT):
         try:
             reset.reset(orchestrator_connection)
-            process.process(orchestrator_connection, action_sink=action_sink, limit=limit)
+            process.process(orchestrator_connection, action_sink=action_sink)
             break
 
         # If any business rules are broken the robot should stop entirely.
