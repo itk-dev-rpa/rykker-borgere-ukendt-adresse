@@ -35,7 +35,7 @@ def get_kombit_access(orchestrator_connection: OrchestratorConnection):
     return KombitAccess(config.CVR, certificate_path)
 
 
-def send_digital_post(kombit_access: KombitAccess, file_path: str, recipient_cpr: str, letter_title:str):
+def send_digital_post(kombit_access: KombitAccess, file_path: str, recipient_cpr: str, letter_title: str):
     """Send digital post to recipient."""
     if not digital_post.is_registered(recipient_cpr, "digitalpost", kombit_access):
         return False
