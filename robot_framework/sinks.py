@@ -28,6 +28,14 @@ class RealActionsSink:
         self._nova = nova_access
         self._kombit = kombit_access
 
+        def _get_letter_title(name: str, step: int):
+            tagline = "din handling er påkrævet."
+            if step == 1:
+                tagline = "din adresse er ukendt."
+            if step == 2:
+                tagline = "din adresse er ikke gyldig!"
+            return f"{name}, {tagline}"
+
     def send_sms(self, case: dict, cpr: str, _first_name: str, *, language: str, reason: str = "") -> None:
         """Send an SMS via Serviceplatformen and add a Nova note documenting it."""
         if self._kombit is None:
@@ -68,7 +76,7 @@ class RealActionsSink:
         letter_path = util.fill_template(template_to_use, str(config.TMP_DIR / letter_name), first_name, deadline_date, case_number)
         pdf_path = util.convert_docx_to_pdf(letter_path, str(config.TMP_DIR))
 
-        delivered = service_platform_functions.send_digital_post(self._kombit, str(pdf_path), cpr)
+        delivered = service_platform_functions.send_digital_post(self._kombit, str(pdf_path), cpr, self._get_letter_title(first_name, step))
 
         nova_functions.upload_document(
             nova_access=self._nova,

@@ -186,7 +186,8 @@ def get_latest_reminder_info(case_uuid: str, nova_access: NovaAccess) -> tuple[i
     """Get information about the latest reminder sent for a case.
 
     Parses journal notes to find the most recent reminder note created by the robot.
-    Looks for notes with titles matching "Rykker X sendt".
+    Looks for notes with titles matching "Rykker X sendt". Notes dated before
+    config.REMINDER_NOTE_CUTOFF are ignored (pre-go-live test/legacy notes).
 
     Args:
         case_uuid: The uuid of the case to check.
@@ -208,6 +209,14 @@ def get_latest_reminder_info(case_uuid: str, nova_access: NovaAccess) -> tuple[i
         # counter must still advance so we don't retry the same reminder every run.
         match = re.match(r"^(?:Ikke sendt: )?Rykker (\d+) sendt$", note.title or "")
         if not match:
+            continue
+        # Ignore reminder notes created before go-live. Live testing left undeletable
+        # test notes ("Rykker 0/1 sendt") on real cases; counting them would make the
+        # robot skip real reminders. Notes without a parseable date are kept (real
+        # production notes always carry a valid journal_date).
+        note_date = _normalize_iso_date(getattr(note, "journal_date", None))
+        if config.REMINDER_NOTE_CUTOFF and note_date and \
+                datetime.fromisoformat(note_date) < config.REMINDER_NOTE_CUTOFF:
             continue
         step = int(match.group(1))
         if step > latest_step:

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.1.3 - 07/07/2026
+
+- Ignore reminder notes ("Rykker X sendt") dated before go-live (config.REMINDER_NOTE_CUTOFF) so undeletable test notes from live testing don't make the robot skip real reminders
+- People younger than 18 are skipped
+
+
 ## 1.1.2 - 31/06/2026
 
 - Fixed upload filename derived from the file's real .pdf basename
