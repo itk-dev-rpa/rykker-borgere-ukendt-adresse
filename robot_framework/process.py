@@ -245,14 +245,7 @@ def handle_citizen(*, citizen: dict, nova_access: NovaAccess, kombit_access: Kom
         orchestrator_connection.log_error(f"Failed to check registration status for {first_name}: {e.response.text}")
         return 0, 0
 
-    encrypted_ref = util.encrypt_cpr(cpr, first_name)
-    previous_status = util.get_queue_element(orchestrator_connection, config.QUEUE_NAME, encrypted_ref)
-
-    if is_dry:
-        simulated_prev = action_sink.mock_queue_state.get(encrypted_ref)
-        if simulated_prev is not None:
-            previous_status = simulated_prev
-
+    # Collect state of current case
     step_sent, baseline_date, interval_days = _resolve_baseline_state(
         case=case,
         case_uuid=case_uuid,
@@ -276,6 +269,15 @@ def handle_citizen(*, citizen: dict, nova_access: NovaAccess, kombit_access: Kom
 
     sms_sent = 0
 
+    # Check if we should send a text because they changed registration status
+    encrypted_ref = util.encrypt_cpr(cpr, first_name)
+    previous_status = util.get_queue_element(orchestrator_connection, config.QUEUE_NAME, encrypted_ref)
+
+    if is_dry:
+        simulated_prev = action_sink.mock_queue_state.get(encrypted_ref)
+        if simulated_prev is not None:
+            previous_status = simulated_prev
+
     if (not sending_rykker_soon
             and previous_status
             and not previous_status.get("nemsms", False)
@@ -287,6 +289,7 @@ def handle_citizen(*, citizen: dict, nova_access: NovaAccess, kombit_access: Kom
 
     action_sink.update_queue(encrypted_ref, digital_post_registered, nemsms_registered, case_uuid)
 
+    # Check if we are sending a notice
     reminder_sent = handle_case(
         case=case,
         orchestrator_connection=orchestrator_connection,

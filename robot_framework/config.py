@@ -1,4 +1,5 @@
 """This module contains configuration constants used across the framework"""
+from datetime import datetime
 from pathlib import Path
 
 from itk_dev_shared_components.kmd_nova.nova_objects import Caseworker
@@ -34,7 +35,7 @@ CVR = "55133018"
 KLE_NUMBER = "23.05.00"
 
 # SQL query for finding citizens with unknown address
-SQL_QUERY = "SELECT * FROM [DWH].[Mart].[AdresseAktuel] WHERE Vejkode = 9901 AND Myndighed = 751"
+SQL_QUERY = "SELECT * FROM [DWH].[Mart].[AdresseAktuel] WHERE Vejkode = 9901 AND Myndighed = 751 AND Alder > 17"
 
 # Connection string for the DWH SQL Server.
 # Driver and server can be overridden by drift without code change.
@@ -45,6 +46,12 @@ REMINDER_INITIAL_INTERVAL_DAYS = 14   # From case creation date (caseDate) to Ry
 REMINDER_FOLLOWUP_INTERVAL_DAYS = 30  # Between subsequent reminders
 SUPPRESS_SMS_WINDOW_DAYS = 7          # Suppress NemSMS-change SMS within N days of next reminder
 LETTER_DEADLINE_DAYS = 30             # Deadline written into the reminder letter
+
+# Reminder notes ("Rykker X sendt") dated before go-live are ignored by
+# get_latest_reminder_info. During live testing, undeletable/unrenamable test notes
+# ("Rykker 0/1 sendt") were created on real cases; this cutoff ensures they are not
+# counted. No real reminders were sent before this date. Set to None to disable filtering.
+REMINDER_NOTE_CUTOFF: datetime | None = datetime(2026, 7, 7)
 
 # Retry strategy for transient Service Platform errors in check_registration_status.
 # REGISTRATION_CHECK_ATTEMPTS counts the first try plus retries; a fixed delay

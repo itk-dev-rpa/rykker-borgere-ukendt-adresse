@@ -36,10 +36,11 @@ def _nova_access():
     return access
 
 
-def _note(title: str) -> JournalNote:
-    """Build a Mock journal note with the given title."""
+def _note(title: str, journal_date: str | None = None) -> JournalNote:
+    """Build a Mock journal note with the given title and optional ISO journal_date."""
     note = Mock(spec=JournalNote)
     note.title = title
+    note.journal_date = journal_date
     return note
 
 
@@ -138,6 +139,45 @@ def test_latest_reminder_info_handles_case_without_notes(mock_get_notes):
     assert last_date is None
 
 
+@patch("robot_framework.rykker_borgere.nova_functions.nova_notes.get_notes")
+def test_latest_reminder_info_ignores_notes_before_cutoff(mock_get_notes, monkeypatch):
+    """A reminder note dated before the go-live cutoff is treated as a test note and ignored."""
+    monkeypatch.setattr(config, "REMINDER_NOTE_CUTOFF", datetime(2026, 7, 7))
+    mock_get_notes.return_value = [_note("Rykker 1 sendt", "2026-05-01T09:00:00")]
+
+    step, last_date = nova_functions.get_latest_reminder_info("case-uuid-123", _nova_access())
+
+    assert step == 0
+    assert last_date is None
+
+
+@patch("robot_framework.rykker_borgere.nova_functions.nova_notes.get_notes")
+def test_latest_reminder_info_counts_notes_after_cutoff(mock_get_notes, monkeypatch):
+    """A reminder note dated on/after the go-live cutoff is counted normally."""
+    monkeypatch.setattr(config, "REMINDER_NOTE_CUTOFF", datetime(2026, 7, 7))
+    mock_get_notes.return_value = [_note("Rykker 1 sendt", "2026-08-01T09:00:00")]
+
+    step, last_date = nova_functions.get_latest_reminder_info("case-uuid-123", _nova_access())
+
+    assert step == 1
+    assert last_date == "2026-08-01T09:00:00"
+
+
+@patch("robot_framework.rykker_borgere.nova_functions.nova_notes.get_notes")
+def test_latest_reminder_info_mixes_pre_and_post_cutoff_notes(mock_get_notes, monkeypatch):
+    """A pre-cutoff test note is ignored while a post-cutoff note still advances the step."""
+    monkeypatch.setattr(config, "REMINDER_NOTE_CUTOFF", datetime(2026, 7, 7))
+    mock_get_notes.return_value = [
+        _note("Rykker 1 sendt", "2026-05-01T09:00:00"),  # pre-cutoff test note, ignored
+        _note("Rykker 2 sendt", "2026-08-01T09:00:00"),  # real note, counted
+    ]
+
+    step, last_date = nova_functions.get_latest_reminder_info("case-uuid-123", _nova_access())
+
+    assert step == 2
+    assert last_date == "2026-08-01T09:00:00"
+
+
 # ---------------------------------------------------------------------------
 # nova_functions.update_case
 # ---------------------------------------------------------------------------
@@ -190,7 +230,7 @@ def test_send_digital_post_returns_false_when_not_registered(mock_is_registered)
     """Unregistered recipients short-circuit and return False without sending."""
     mock_is_registered.return_value = False
 
-    assert service_platform_functions.send_digital_post(Mock(), "letter.pdf", "0101011234") is False
+    assert service_platform_functions.send_digital_post(Mock(), "letter.pdf", "0101011234", "Rykker 1") is False
 
 
 @patch("robot_framework.rykker_borgere.service_platform_functions.digital_post.send_message")
@@ -201,7 +241,7 @@ def test_send_digital_post_sends_message_for_registered(mock_is_registered, mock
     fake_pdf = tmp_path / "letter.pdf"
     fake_pdf.write_bytes(b"%PDF-fake")
 
-    assert service_platform_functions.send_digital_post(Mock(), str(fake_pdf), "0101011234") is True
+    assert service_platform_functions.send_digital_post(Mock(), str(fake_pdf), "0101011234", "Rykker 1") is True
     mock_send_message.assert_called_once()
 
 

@@ -35,13 +35,13 @@ def get_kombit_access(orchestrator_connection: OrchestratorConnection):
     return KombitAccess(config.CVR, certificate_path)
 
 
-def send_digital_post(kombit_access: KombitAccess, file_path: str, recipient_cpr: str):
+def send_digital_post(kombit_access: KombitAccess, file_path: str, recipient_cpr: str, letter_title: str):
     """Send digital post to recipient."""
     if not digital_post.is_registered(recipient_cpr, "digitalpost", kombit_access):
         return False
 
     sender = message.Sender(
-        senderID=config.CVR, idType="CVR", label="Rykker", attentionData=None, contactPoint=None
+        senderID=config.CVR, idType="CVR", label="Aarhus Kommune", attentionData=None, contactPoint=None
     )
     recipient = message.Recipient(
         recipientID=recipient_cpr, idType="CPR", label="Rykker", attentionData=None, contactPoint=None
@@ -49,8 +49,8 @@ def send_digital_post(kombit_access: KombitAccess, file_path: str, recipient_cpr
     file_path = Path(file_path)
     with open(file_path, "rb") as file:
         file_content = base64.b64encode(file.read()).decode("utf-8")
-        send_file = message.File(encodingFormat="UTF-8", filename=str(file_path.name), language="da", content=file_content)
-        msg = message.create_digital_post_with_main_document("Rykker for adresseændring", sender, recipient, (send_file,))
+        send_file = message.File(encodingFormat="application/pdf", filename=str(file_path.name), language="da", content=file_content)
+        msg = message.create_digital_post_with_main_document(letter_title, sender, recipient, (send_file,))
         digital_post.send_message("Digital Post", msg, kombit_access)
     return True
 
