@@ -28,13 +28,13 @@ class RealActionsSink:
         self._nova = nova_access
         self._kombit = kombit_access
 
-        def _get_letter_title(name: str, step: int):
-            tagline = "din handling er påkrævet."
-            if step == 1:
-                tagline = "din adresse er ukendt."
-            if step == 2:
-                tagline = "din adresse er ikke gyldig!"
-            return f"{name}, {tagline}"
+    def _get_letter_title(self, name: str, step: int):
+        tagline = "din handling er påkrævet."
+        if step == 1:
+            tagline = "din adresse er ukendt."
+        if step == 2:
+            tagline = "din adresse er ikke gyldig!"
+        return f"{name}, {tagline}"
 
     def send_sms(self, case: dict, cpr: str, _first_name: str, *, language: str, reason: str = "") -> None:
         """Send an SMS via Serviceplatformen and add a Nova note documenting it."""
