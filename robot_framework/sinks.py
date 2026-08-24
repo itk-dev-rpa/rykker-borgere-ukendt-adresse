@@ -36,17 +36,27 @@ class RealActionsSink:
             tagline = "din adresse er ikke gyldig!"
         return f"{name}, {tagline}"
 
-    def send_sms(self, case: dict, cpr: str, _first_name: str, *, language: str, reason: str = "") -> None:
-        """Send an SMS via Serviceplatformen and add a Nova note documenting it."""
+    def send_sms(self, case: dict, cpr: str, _first_name: str, *, language: str, reason: str = "") -> bool:
+        """Send an SMS via Serviceplatformen and add a Nova note documenting it.
+
+        Returns True when the SMS actually went out. Serviceplatformen can report the
+        citizen as not NemSMS-registered - the status may change between our check and
+        this call - and then no note is written: the journal must not claim an SMS that
+        never happened.
+        """
         if self._kombit is None:
             raise RuntimeError("RealActionsSink requires KombitAccess to send SMS")
-        service_platform_functions.send_sms(self._kombit, cpr, language)
+        if not service_platform_functions.send_sms(self._kombit, cpr, language):
+            if self._orc is not None:
+                self._orc.log_info(f"SMS ({language}) ikke sendt: borger er ikke tilmeldt NemSMS.")
+            return False
         if self._nova is not None:
             nova_functions.add_sms_note(
                 case_uuid=case["common"]["uuid"],
                 nova_access=self._nova,
                 reason=reason,
             )
+        return True
 
     def update_queue(self, encrypted_ref: str, digital_post: bool, nemsms: bool, case_uuid: str) -> None:
         """Persist the citizen comms status in the orchestrator queue."""
@@ -69,10 +79,14 @@ class RealActionsSink:
 
         case_uuid = case["common"]["uuid"]
         case_number = case["caseAttributes"]["userFriendlyCaseNumber"]
-        template_to_use = str(config.TEMPLATES_DIR / f"Rykker {step} - Ukendt adresse.docx")
-        letter_name = f"{first_name}, din adresse er ukendt"
+        # Templates only exist up to MAX_LETTER_TEMPLATE_STEP; later steps reuse the last
+        # one so the reminder schedule can keep running past it.
+        template_step = min(step, config.MAX_LETTER_TEMPLATE_STEP)
+        template_to_use = str(config.TEMPLATES_DIR / f"Rykker {template_step} - Ukendt adresse.docx")
+        letter_name = f"Rykker {step} - {first_name}, din adresse er ukendt"
         deadline_date = datetime.now() + timedelta(days=config.LETTER_DEADLINE_DAYS)
         config.TMP_DIR.mkdir(exist_ok=True)
+        util.clear_directory(config.TMP_DIR)
         letter_path = util.fill_template(template_to_use, str(config.TMP_DIR / letter_name), first_name, deadline_date, case_number)
         pdf_path = util.convert_docx_to_pdf(letter_path, str(config.TMP_DIR))
 
@@ -87,20 +101,23 @@ class RealActionsSink:
         nova_functions.add_reminder_note(case_uuid, step, self._nova, sent=delivered)
 
         if delivered and nemsms_registered:
+            any_sms_sent = False
             for lang in ("da", "en"):
                 try:
-                    service_platform_functions.send_sms(self._kombit, cpr, lang)
+                    any_sms_sent = service_platform_functions.send_sms(self._kombit, cpr, lang) or any_sms_sent
                 except Exception as e:  # pylint: disable=broad-exception-caught
                     # Letter is already delivered — SMS is a bonus. Log and continue.
                     if self._orc is not None:
                         self._orc.log_error(
                             f"NemSMS-notifikation om Rykker {step} for sag {case_number} fejlede ({lang}): {str(e)}"
                         )
-            nova_functions.add_sms_note(
-                case_uuid=case_uuid,
-                nova_access=self._nova,
-                reason=f"Notifikation om at Rykker {step} er leveret via digital post",
-            )
+            # Only journal the notification if at least one language actually went out.
+            if any_sms_sent:
+                nova_functions.add_sms_note(
+                    case_uuid=case_uuid,
+                    nova_access=self._nova,
+                    reason=f"Notifikation om at Rykker {step} er leveret via digital post",
+                )
 
 
 class DryRunSink:  # pylint: disable=too-many-instance-attributes
@@ -127,8 +144,12 @@ class DryRunSink:  # pylint: disable=too-many-instance-attributes
         if self.verbose:
             print(f"  → {msg}", flush=True)
 
-    def send_sms(self, case: dict, cpr: str, first_name: str, *, language: str, reason: str = ""):
-        """Record an SMS that would be sent."""
+    def send_sms(self, case: dict, cpr: str, first_name: str, *, language: str, reason: str = "") -> bool:
+        """Record an SMS that would be sent.
+
+        Always returns True to mirror the successful path of RealActionsSink.send_sms;
+        the dry run does not simulate an unregistered NemSMS recipient.
+        """
         case_number = case["caseAttributes"]["userFriendlyCaseNumber"]
         self.sms_actions.append({
             "cpr": cpr,
@@ -137,6 +158,7 @@ class DryRunSink:  # pylint: disable=too-many-instance-attributes
             "reason": reason,
         })
         self._say(f"[sag {case_number}] SMS ({language}) → {first_name} ({util.mask_cpr(cpr)}) — {reason}")
+        return True
 
     def send_reminder(self, case: dict, cpr: str, first_name: str, step: int, *,
                       nemsms_registered: bool = False):

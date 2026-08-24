@@ -25,10 +25,56 @@ def fill_template(template_path: str, output_path: str, name: str, date: datetim
     return Path(output_path)
 
 
+def kill_libreoffice() -> None:
+    """Forcefully terminate any lingering LibreOffice process.
+
+    LibreOffice is single-instance: a process left behind by a killed run keeps a
+    profile lock that makes every later --convert-to hang. Safe to call when nothing
+    is running - taskkill just reports that no process was found.
+    """
+    for image_name in ("soffice.exe", "soffice.bin"):
+        subprocess.run(args=["taskkill", "/F", "/T", "/IM", image_name], check=False, capture_output=True)
+
+
+def clear_directory(directory: Path) -> None:
+    """Delete the files in a directory, leaving the directory itself in place.
+
+    Called before each letter is generated so a conversion can never pick up a stale
+    PDF from an earlier citizen. A file we cannot delete (still locked by a crashed
+    LibreOffice, say) must not stop the robot from sending the reminder - the
+    existence check in convert_docx_to_pdf is what actually guards against sending
+    the wrong file.
+    """
+    if not directory.exists():
+        return
+    for path in directory.iterdir():
+        if path.is_file():
+            try:
+                path.unlink()
+            except OSError:
+                pass
+
+
 def convert_docx_to_pdf(path_to_docx: Path, tmpdir: str):
     """Convert a docx file to a PDF file."""
-    subprocess.run(args=[config.PATH_TO_LIBREOFFICE, "--headless", "--convert-to", "pdf", "--outdir", tmpdir, str(path_to_docx)], check=True)
-    return Path(tmpdir) / f"{path_to_docx.stem}.pdf"
+    try:
+        subprocess.run(
+            args=[config.PATH_TO_LIBREOFFICE, "--headless", "--convert-to", "pdf", "--outdir", tmpdir, str(path_to_docx)],
+            check=True,
+            timeout=config.LIBREOFFICE_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        # Kill the hung process so the next citizen in the loop is not blocked by the
+        # same profile lock, then let the caller log and skip this one.
+        kill_libreoffice()
+        raise
+
+    pdf_path = Path(tmpdir) / f"{path_to_docx.stem}.pdf"
+    if not pdf_path.exists():
+        # LibreOffice can exit 0 without writing any output. Fail loudly instead of
+        # letting the caller send whatever happens to sit at that path.
+        raise RuntimeError(f"LibreOffice exited successfully but produced no PDF for '{path_to_docx.name}'.")
+    return pdf_path
 
 
 def get_step(notes: list[JournalNote]) -> tuple[int, JournalNote]:

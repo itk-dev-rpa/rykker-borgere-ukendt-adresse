@@ -86,6 +86,9 @@ CASEWORKER = Caseworker(
 )
 
 PATH_TO_LIBREOFFICE = "C:/Program Files/LibreOffice/program/soffice.exe"
+LIBREOFFICE_TIMEOUT_SECONDS = 60
+
+MAX_LETTER_TEMPLATE_STEP = 3
 
 # Bundled assets are resolved against this file's location so paths work regardless
 # of the process working directory (the same approach initialize.py uses for the

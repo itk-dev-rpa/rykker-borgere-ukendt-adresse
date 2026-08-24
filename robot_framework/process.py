@@ -58,9 +58,10 @@ def process(orchestrator_connection: OrchestratorConnection, action_sink: DryRun
 
     # Optional batch cap from the OpenOrchestrator process arguments, e.g. {"limit": 5}.
     if orchestrator_connection.process_arguments:
-        limit = json.loads(orchestrator_connection.process_arguments)["limit"]
-        citizens_with_unknown_address = citizens_with_unknown_address[:limit]
-        orchestrator_connection.log_info(f"Batch limit active: processing at most {limit} citizens this run.")
+        limit = json.loads(orchestrator_connection.process_arguments).get("limit")
+        if limit:
+            citizens_with_unknown_address = citizens_with_unknown_address[:limit]
+            orchestrator_connection.log_info(f"Batch limit active: processing at most {limit} citizens this run.")
 
     sms_sent_count = 0
     reminders_sent_count = 0
@@ -282,10 +283,14 @@ def handle_citizen(*, citizen: dict, nova_access: NovaAccess, kombit_access: Kom
             and previous_status
             and not previous_status.get("nemsms", False)
             and nemsms_registered):
-        action_sink.send_sms(case, cpr, first_name, language="da", reason="NemSMS-status ændret fra ikke-tilmeldt til tilmeldt")
-        action_sink.send_sms(case, cpr, first_name, language="en", reason="NemSMS-status ændret fra ikke-tilmeldt til tilmeldt")
-        sms_sent = 2
-        orchestrator_connection.log_info(f"SMS action registered for {first_name} due to NemSMS status change.")
+        reason = "NemSMS-status ændret fra ikke-tilmeldt til tilmeldt"
+        sms_sent = sum([
+            action_sink.send_sms(case, cpr, first_name, language="da", reason=reason),
+            action_sink.send_sms(case, cpr, first_name, language="en", reason=reason),
+        ])
+        orchestrator_connection.log_info(
+            f"{sms_sent} SMS action(s) registered for {first_name} due to NemSMS status change."
+        )
 
     action_sink.update_queue(encrypted_ref, digital_post_registered, nemsms_registered, case_uuid)
 
@@ -297,6 +302,7 @@ def handle_citizen(*, citizen: dict, nova_access: NovaAccess, kombit_access: Kom
         baseline_date=baseline_date,
         action_sink=action_sink,
         nemsms_registered=nemsms_registered,
+        first_name=first_name,
     )
 
     return sms_sent, reminder_sent
@@ -305,7 +311,8 @@ def handle_citizen(*, citizen: dict, nova_access: NovaAccess, kombit_access: Kom
 def handle_case(*, case: dict, orchestrator_connection: OrchestratorConnection,
                 step_sent: int, baseline_date: str,
                 action_sink: DryRunSink | RealActionsSink,
-                nemsms_registered: bool = False) -> int:
+                nemsms_registered: bool = False,
+                first_name: str | None = None) -> int:
     """Handle reminder sending for a single case.
 
     Args:
@@ -316,6 +323,9 @@ def handle_case(*, case: dict, orchestrator_connection: OrchestratorConnection,
         action_sink: Sink used for side-effects (real or dry-run).
         nemsms_registered: True if the citizen is NemSMS-subscribed. Used to trigger a
             confirmation SMS after successful digital post delivery.
+        first_name: The citizen's first name from the SQL query, used to address the
+            letter. When None (typically in unit tests), the Nova case party name is
+            used instead.
 
     Returns:
         Number of reminders sent (0 or 1). An "Ikke sendt: Rykker X" note also counts
@@ -341,9 +351,11 @@ def handle_case(*, case: dict, orchestrator_connection: OrchestratorConnection,
     if datetime.now() - baseline_dt < timedelta(days=interval_days):
         return 0
 
+    letter_name = first_name or case_party.name
+
     try:
         action_sink.send_reminder(
-            case, cpr, case_party.name, next_step,
+            case, cpr, letter_name, next_step,
             nemsms_registered=nemsms_registered,
         )
         itk_dev_event_log.emit(orchestrator_connection.process_name, f"Rykker {next_step} sendt")
