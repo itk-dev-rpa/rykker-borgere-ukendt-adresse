@@ -83,7 +83,7 @@ class RealActionsSink:
         # one so the reminder schedule can keep running past it.
         template_step = min(step, config.MAX_LETTER_TEMPLATE_STEP)
         template_to_use = str(config.TEMPLATES_DIR / f"Rykker {template_step} - Ukendt adresse.docx")
-        letter_name = f"Rykker {step} - {first_name}, din adresse er ukendt"
+        letter_name = f"Rykker {step} - {first_name}, din adresse er ukendt.docx"
         deadline_date = datetime.now() + timedelta(days=config.LETTER_DEADLINE_DAYS)
         config.TMP_DIR.mkdir(exist_ok=True)
         util.clear_directory(config.TMP_DIR)
