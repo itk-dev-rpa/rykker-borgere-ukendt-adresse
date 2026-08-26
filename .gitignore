@@ -160,3 +160,5 @@ cython_debug/
 #.idea/
 
 .vscode/
+robot_framework/tmp/*
+certificate.pem
